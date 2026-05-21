@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { connectTraceWebSocket } from '../services/traceWebSocket'
+import { connectTraceWebSocket } from '../websocket/websocketClient'
 
 export const WEBSOCKET_STATUS = {
   CONNECTING: 'CONNECTING',
