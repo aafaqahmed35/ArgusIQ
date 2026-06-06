@@ -4,6 +4,7 @@ import PageHeader from '../components/layout/PageHeader'
 import MetricGrid from '../components/metrics/MetricGrid'
 import LatencyOverviewPanel from '../components/analytics/LatencyOverviewPanel'
 import TopEndpointsPanel from '../components/analytics/TopEndpointsPanel'
+import ActivityFeed from '../components/activity/ActivityFeed'
 import TraceDetailsDrawer from '../components/traces/TraceDetailsDrawer'
 import TracePanel from '../components/traces/TracePanel'
 import { useTraceAnalytics } from '../hooks/useTraceAnalytics'
@@ -28,7 +29,10 @@ function TraceDashboard() {
           formatDuration={analytics.formatDuration}
         />
       </section>
-      <TracePanel traces={traces} isLoading={isLoading} error={error} onTraceSelect={setSelectedTrace} />
+      <section className="trace-workspace" aria-label="Trace workspace">
+        <TracePanel traces={traces} isLoading={isLoading} error={error} onTraceSelect={setSelectedTrace} />
+        <ActivityFeed traces={traces} />
+      </section>
       <TraceDetailsDrawer trace={selectedTrace} onClose={() => setSelectedTrace(null)} />
     </AppShell>
   )
