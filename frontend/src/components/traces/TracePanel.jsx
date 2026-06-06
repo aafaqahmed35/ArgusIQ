@@ -1,6 +1,6 @@
 import TraceTable from '../TraceTable'
 
-function TracePanel({ traces, isLoading, error }) {
+function TracePanel({ traces, isLoading, error, onTraceSelect }) {
   return (
     <section className="trace-panel" aria-label="Trace records">
       <div className="trace-panel__header">
@@ -11,7 +11,7 @@ function TracePanel({ traces, isLoading, error }) {
         <span className="trace-panel__count">{traces.length.toLocaleString()} records</span>
       </div>
 
-      <TraceTable traces={traces} isLoading={isLoading} error={error} />
+      <TraceTable traces={traces} isLoading={isLoading} error={error} onTraceSelect={onTraceSelect} />
     </section>
   )
 }

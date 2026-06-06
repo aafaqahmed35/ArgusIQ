@@ -1,66 +1,35 @@
+import { useState } from 'react'
 import AppShell from '../components/layout/AppShell'
 import PageHeader from '../components/layout/PageHeader'
 import MetricGrid from '../components/metrics/MetricGrid'
+import LatencyOverviewPanel from '../components/analytics/LatencyOverviewPanel'
+import TopEndpointsPanel from '../components/analytics/TopEndpointsPanel'
+import TraceDetailsDrawer from '../components/traces/TraceDetailsDrawer'
 import TracePanel from '../components/traces/TracePanel'
+import { useTraceAnalytics } from '../hooks/useTraceAnalytics'
 import { useTraces } from '../hooks/useTraces'
 import '../styles/dashboard.css'
 
-const RESPONSE_TIME_FIELDS = ['executionTimeMs', 'responseTime', 'duration', 'latency', 'responseTimeMs']
-
-function getTraceResponseTime(trace) {
-  const responseTime = RESPONSE_TIME_FIELDS.map((field) => trace?.[field])
-    .filter((value) => value !== undefined && value !== null && value !== '')
-    .map(Number)
-    .find(Number.isFinite)
-
-  return responseTime ?? null
-}
-
-function formatAverageResponseTime(traces) {
-  const responseTimes = traces.map(getTraceResponseTime).filter((value) => value !== null)
-
-  if (responseTimes.length === 0) {
-    return '—'
-  }
-
-  const average = responseTimes.reduce((total, value) => total + value, 0) / responseTimes.length
-  return `${Math.round(average).toLocaleString()} ms`
-}
-
 function TraceDashboard() {
+  const [selectedTrace, setSelectedTrace] = useState(null)
   const { traces, isLoading, error, websocketStatus, refreshTraces } = useTraces()
-  const metrics = [
-    {
-      label: 'Total Traces',
-      value: traces.length.toLocaleString(),
-      detail: 'Loaded records',
-      tone: 'signal',
-    },
-    {
-      label: 'Average Response Time',
-      value: formatAverageResponseTime(traces),
-      detail: 'Across visible traces',
-      tone: 'latency',
-    },
-    {
-      label: 'WebSocket Status',
-      value: websocketStatus,
-      detail: 'Live trace channel',
-      tone: websocketStatus.toLowerCase(),
-    },
-    {
-      label: 'Data Source',
-      value: 'REST + WS',
-      detail: 'Initial fetch plus stream',
-      tone: 'source',
-    },
-  ]
+  const analytics = useTraceAnalytics(traces)
 
   return (
     <AppShell>
       <PageHeader websocketStatus={websocketStatus} isLoading={isLoading} onRefresh={refreshTraces} />
-      <MetricGrid metrics={metrics} />
-      <TracePanel traces={traces} isLoading={isLoading} error={error} />
+      <MetricGrid metrics={analytics.metrics} />
+      <section className="analytics-grid" aria-label="Trace analytics">
+        <TopEndpointsPanel endpoints={analytics.topEndpoints} />
+        <LatencyOverviewPanel
+          averageResponseTime={analytics.averageResponseTime}
+          p95ResponseTime={analytics.p95ResponseTime}
+          slowestEndpoint={analytics.slowestEndpoint}
+          formatDuration={analytics.formatDuration}
+        />
+      </section>
+      <TracePanel traces={traces} isLoading={isLoading} error={error} onTraceSelect={setSelectedTrace} />
+      <TraceDetailsDrawer trace={selectedTrace} onClose={() => setSelectedTrace(null)} />
     </AppShell>
   )
 }

@@ -59,7 +59,7 @@ function getStatusClass(status) {
   return 'status-pill status-pill--success'
 }
 
-function TraceTable({ traces, isLoading, error }) {
+function TraceTable({ traces, isLoading, error, onTraceSelect }) {
   if (isLoading) {
     return (
       <div className="table-state" role="status">
@@ -102,9 +102,25 @@ function TraceTable({ traces, isLoading, error }) {
             const duration = getFieldValue(trace, DURATION_FIELDS)
             const timestamp = getFieldValue(trace, DATE_FIELDS, null)
             const rowKey = trace.id ?? trace.traceId ?? `${path}-${timestamp ?? index}`
+            const handleTraceSelect = () => {
+              onTraceSelect?.(trace)
+            }
+            const handleTraceSelectKeyDown = (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleTraceSelect()
+              }
+            }
 
             return (
-              <tr key={rowKey}>
+              <tr
+                className={onTraceSelect ? 'trace-table__row trace-table__row--interactive' : 'trace-table__row'}
+                key={rowKey}
+                onClick={handleTraceSelect}
+                onKeyDown={handleTraceSelectKeyDown}
+                role={onTraceSelect ? 'button' : undefined}
+                tabIndex={onTraceSelect ? 0 : undefined}
+              >
                 <td>{formatDate(timestamp)}</td>
                 <td className="cell-strong">{service}</td>
                 <td>
