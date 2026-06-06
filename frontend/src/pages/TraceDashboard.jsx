@@ -1,56 +1,67 @@
-import TraceTable from '../components/TraceTable'
+import AppShell from '../components/layout/AppShell'
+import PageHeader from '../components/layout/PageHeader'
+import MetricGrid from '../components/metrics/MetricGrid'
+import TracePanel from '../components/traces/TracePanel'
 import { useTraces } from '../hooks/useTraces'
+import '../styles/dashboard.css'
+
+const RESPONSE_TIME_FIELDS = ['executionTimeMs', 'responseTime', 'duration', 'latency', 'responseTimeMs']
+
+function getTraceResponseTime(trace) {
+  const responseTime = RESPONSE_TIME_FIELDS.map((field) => trace?.[field])
+    .filter((value) => value !== undefined && value !== null && value !== '')
+    .map(Number)
+    .find(Number.isFinite)
+
+  return responseTime ?? null
+}
+
+function formatAverageResponseTime(traces) {
+  const responseTimes = traces.map(getTraceResponseTime).filter((value) => value !== null)
+
+  if (responseTimes.length === 0) {
+    return '—'
+  }
+
+  const average = responseTimes.reduce((total, value) => total + value, 0) / responseTimes.length
+  return `${Math.round(average).toLocaleString()} ms`
+}
 
 function TraceDashboard() {
   const { traces, isLoading, error, websocketStatus, refreshTraces } = useTraces()
+  const metrics = [
+    {
+      label: 'Total Traces',
+      value: traces.length.toLocaleString(),
+      detail: 'Loaded records',
+      tone: 'signal',
+    },
+    {
+      label: 'Average Response Time',
+      value: formatAverageResponseTime(traces),
+      detail: 'Across visible traces',
+      tone: 'latency',
+    },
+    {
+      label: 'WebSocket Status',
+      value: websocketStatus,
+      detail: 'Live trace channel',
+      tone: websocketStatus.toLowerCase(),
+    },
+    {
+      label: 'Data Source',
+      value: 'REST + WS',
+      detail: 'Initial fetch plus stream',
+      tone: 'source',
+    },
+  ]
 
   return (
-    <main className="dashboard-page">
-      <section className="dashboard-header" aria-labelledby="dashboard-title">
-        <div>
-          <p className="eyebrow">ArgusIQ Observability</p>
-          <h1 id="dashboard-title">Trace Dashboard</h1>
-          <p className="dashboard-subtitle">
-            REST-hydrated request trace monitoring with live websocket updates.
-          </p>
-        </div>
-
-        <div className="dashboard-actions">
-          <span className={`connection-status connection-status--${websocketStatus.toLowerCase()}`}>
-            {websocketStatus}
-          </span>
-          <button className="refresh-button" type="button" onClick={refreshTraces} disabled={isLoading}>
-            {isLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
-        </div>
-      </section>
-
-      <section className="summary-grid" aria-label="Trace summary">
-        <div className="summary-tile">
-          <span>Total Traces</span>
-          <strong>{traces.length}</strong>
-        </div>
-        <div className="summary-tile">
-          <span>Data Source</span>
-          <strong>REST + WS</strong>
-        </div>
-        <div className="summary-tile">
-          <span>Realtime</span>
-          <strong>{websocketStatus}</strong>
-        </div>
-      </section>
-
-      <section className="dashboard-panel" aria-label="Trace records">
-        <div className="panel-header">
-          <div>
-            <h2>Recent Traces</h2>
-            <p>Initial data from REST. New traces stream from /topic/traces.</p>
-          </div>
-        </div>
-
-        <TraceTable traces={traces} isLoading={isLoading} error={error} />
-      </section>
-    </main>
+    <AppShell>
+      <PageHeader websocketStatus={websocketStatus} isLoading={isLoading} onRefresh={refreshTraces} />
+      <MetricGrid metrics={metrics} />
+      <TracePanel traces={traces} isLoading={isLoading} error={error} />
+    </AppShell>
   )
 }
 
