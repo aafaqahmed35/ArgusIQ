@@ -1,3 +1,5 @@
+import { getTraceKey } from '../hooks/useTraces'
+
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
 const STATUS_FIELDS = ['status', 'statusCode', 'httpStatus']
 const METHOD_FIELDS = ['method', 'httpMethod', 'requestMethod']
@@ -59,11 +61,23 @@ function getStatusClass(status) {
   return 'status-pill status-pill--success'
 }
 
-function TraceTable({ traces, isLoading, error, onTraceSelect }) {
+function TraceTable({
+  traces,
+  isLoading,
+  error,
+  onTraceSelect,
+  selectedTraceKey = null,
+  highlightedTraceKeys = new Set(),
+  emptyTitle = 'No traces available',
+  emptyMessage = 'Trace records will appear here as soon as the frontend receives telemetry.',
+}) {
   if (isLoading) {
     return (
-      <div className="table-state" role="status">
-        Loading traces...
+      <div className="table-state table-state--skeleton" role="status" aria-busy="true">
+        <span className="skeleton-line skeleton-line--wide" />
+        <span className="skeleton-line" />
+        <span className="skeleton-line skeleton-line--wide" />
+        <span className="skeleton-line skeleton-line--short" />
       </div>
     )
   }
@@ -77,7 +91,12 @@ function TraceTable({ traces, isLoading, error, onTraceSelect }) {
   }
 
   if (traces.length === 0) {
-    return <div className="table-state">No traces available.</div>
+    return (
+      <div className="table-state table-state--empty table-state--rich">
+        <strong>{emptyTitle}</strong>
+        <span>{emptyMessage}</span>
+      </div>
+    )
   }
 
   return (
@@ -94,14 +113,24 @@ function TraceTable({ traces, isLoading, error, onTraceSelect }) {
           </tr>
         </thead>
         <tbody>
-          {traces.map((trace, index) => {
+          {traces.map((trace) => {
             const status = getFieldValue(trace, STATUS_FIELDS)
             const method = getFieldValue(trace, METHOD_FIELDS)
             const path = getFieldValue(trace, PATH_FIELDS)
             const service = getFieldValue(trace, SERVICE_FIELDS)
             const duration = getFieldValue(trace, DURATION_FIELDS)
             const timestamp = getFieldValue(trace, DATE_FIELDS, null)
-            const rowKey = trace.id ?? trace.traceId ?? `${path}-${timestamp ?? index}`
+            const rowKey = getTraceKey(trace)
+            const isSelected = selectedTraceKey === rowKey
+            const isHighlighted = highlightedTraceKeys.has(rowKey)
+            const rowClassName = [
+              'trace-table__row',
+              onTraceSelect ? 'trace-table__row--interactive' : '',
+              isSelected ? 'trace-table__row--selected' : '',
+              isHighlighted ? 'trace-table__row--highlight' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
             const handleTraceSelect = () => {
               onTraceSelect?.(trace)
             }
@@ -114,7 +143,7 @@ function TraceTable({ traces, isLoading, error, onTraceSelect }) {
 
             return (
               <tr
-                className={onTraceSelect ? 'trace-table__row trace-table__row--interactive' : 'trace-table__row'}
+                className={rowClassName}
                 key={rowKey}
                 onClick={handleTraceSelect}
                 onKeyDown={handleTraceSelectKeyDown}
@@ -126,7 +155,9 @@ function TraceTable({ traces, isLoading, error, onTraceSelect }) {
                 <td>
                   <span className="method-pill">{method}</span>
                 </td>
-                <td className="cell-path">{path}</td>
+                <td className="cell-path" title={path}>
+                  {path}
+                </td>
                 <td>
                   <span className={getStatusClass(status)}>{status}</span>
                 </td>

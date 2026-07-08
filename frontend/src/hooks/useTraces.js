@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchTraces } from '../services/traceApi'
 import { useTraceWebSocket } from './useTraceWebSocket'
 
-function getTraceKey(trace) {
+export function getTraceKey(trace) {
   if (trace?.id !== undefined && trace?.id !== null) {
     return `id:${trace.id}`
   }

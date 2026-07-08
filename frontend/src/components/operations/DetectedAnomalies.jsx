@@ -9,7 +9,11 @@ function DetectedAnomalies({ anomalies }) {
       </div>
 
       {anomalies.length === 0 ? (
-        <div className="detected-anomalies__empty">No anomalies detected.</div>
+        <div className="detected-anomalies__empty detected-anomalies__empty--stable">
+          <strong>System Stable</strong>
+          <span>No anomalies detected.</span>
+          <small>All monitored frontend signals are operating normally.</small>
+        </div>
       ) : (
         <ul className="detected-anomalies__list">
           {anomalies.map((anomaly) => (

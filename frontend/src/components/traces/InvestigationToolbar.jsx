@@ -1,9 +1,4 @@
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
-const STATUS_FILTERS = [
-  { label: '2xx', value: '2xx', tone: 'success' },
-  { label: '4xx', value: '4xx', tone: 'warning' },
-  { label: '5xx', value: '5xx', tone: 'error' },
-]
 const LATENCY_FILTERS = [
   { label: 'Fast', value: 'fast' },
   { label: 'Normal', value: 'normal' },
@@ -11,11 +6,31 @@ const LATENCY_FILTERS = [
   { label: 'Very Slow', value: 'very-slow' },
 ]
 
-function InvestigationToolbar({ filters, updateFilter, clearFilters, activeFilterCount, availableServices }) {
-  const showServiceFilter = availableServices.length > 1
+const INVESTIGATION_MODES = [
+  {
+    label: 'All traces',
+    value: 'all',
+    description: 'Loaded from GET /api/v1/traces',
+  },
+  {
+    label: 'Slow traces',
+    value: 'slow',
+    description: 'Loaded from GET /api/v1/traces/slow',
+  },
+]
+
+function InvestigationToolbar({
+  filters,
+  updateFilter,
+  clearFilters,
+  activeFilterCount,
+  investigationMode = 'all',
+  onInvestigationModeChange,
+}) {
+  const activeMode = INVESTIGATION_MODES.find((mode) => mode.value === investigationMode) ?? INVESTIGATION_MODES[0]
 
   return (
-    <section className="investigation-toolbar" aria-label="Trace investigation filters">
+    <section className="investigation-toolbar investigation-toolbar--explorer" aria-label="Trace investigation filters">
       <div className="investigation-toolbar__header">
         <div>
           <p className="section-kicker">Investigation</p>
@@ -35,6 +50,25 @@ function InvestigationToolbar({ filters, updateFilter, clearFilters, activeFilte
       </div>
 
       <div className="investigation-toolbar__controls">
+        <div className="investigation-control investigation-control--mode">
+          <span>Investigation mode</span>
+          <div className="status-filter-group">
+            {INVESTIGATION_MODES.map((mode) => (
+              <button
+                className={`status-filter status-filter--neutral ${
+                  investigationMode === mode.value ? 'is-active' : ''
+                }`}
+                type="button"
+                key={mode.value}
+                onClick={() => onInvestigationModeChange?.(mode.value)}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+          <small className="investigation-toolbar__mode-note">{activeMode.description}</small>
+        </div>
+
         <label className="investigation-control investigation-control--search">
           <span>Endpoint / Path</span>
           <input
@@ -57,31 +91,6 @@ function InvestigationToolbar({ filters, updateFilter, clearFilters, activeFilte
           </select>
         </label>
 
-        <div className="investigation-control investigation-control--status">
-          <span>Status</span>
-          <div className="status-filter-group">
-            <button
-              className={`status-filter status-filter--neutral ${filters.statusCategory === 'all' ? 'is-active' : ''}`}
-              type="button"
-              onClick={() => updateFilter('statusCategory', 'all')}
-            >
-              All
-            </button>
-            {STATUS_FILTERS.map((statusFilter) => (
-              <button
-                className={`status-filter status-filter--${statusFilter.tone} ${
-                  filters.statusCategory === statusFilter.value ? 'is-active' : ''
-                }`}
-                type="button"
-                key={statusFilter.value}
-                onClick={() => updateFilter('statusCategory', statusFilter.value)}
-              >
-                {statusFilter.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <label className="investigation-control">
           <span>Latency</span>
           <select
@@ -96,20 +105,6 @@ function InvestigationToolbar({ filters, updateFilter, clearFilters, activeFilte
             ))}
           </select>
         </label>
-
-        {showServiceFilter ? (
-          <label className="investigation-control">
-            <span>Service</span>
-            <select value={filters.service} onChange={(event) => updateFilter('service', event.target.value)}>
-              <option value="all">All services</option>
-              {availableServices.map((service) => (
-                <option value={service} key={service}>
-                  {service}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
       </div>
     </section>
   )

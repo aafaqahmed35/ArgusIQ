@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import ActivityFeedItem from './ActivityFeedItem'
 
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
@@ -72,7 +73,7 @@ function getStatusClass(status) {
   return 'activity-status activity-status--success'
 }
 
-function getActivityItems(traces) {
+function getActivityItems(traces, limit) {
   return traces
     .map((trace, index) => {
       const timestamp = getTraceTimestamp(trace)
@@ -105,28 +106,51 @@ function getActivityItems(traces) {
 
       return left.index - right.index
     })
-    .slice(0, ACTIVITY_LIMIT)
+    .slice(0, limit)
 }
 
-function ActivityFeed({ traces }) {
-  const activities = getActivityItems(traces)
+function ActivityFeed({
+  traces,
+  isLoading = false,
+  limit = ACTIVITY_LIMIT,
+  actionHref = null,
+  actionLabel = null,
+  className = '',
+}) {
+  const activities = getActivityItems(traces, limit)
 
   return (
-    <aside className="activity-feed" aria-labelledby="activity-feed-title">
+    <aside className={`activity-feed ${className}`.trim()} aria-labelledby="activity-feed-title">
       <div className="activity-feed__header">
         <div>
           <p className="section-kicker">Live monitor</p>
-          <h2 id="activity-feed-title">Activity Feed</h2>
+          <h2 id="activity-feed-title">Recent Activity</h2>
         </div>
-        <span className="activity-feed__count">Latest {ACTIVITY_LIMIT}</span>
+        <div className="activity-feed__header-actions">
+          {actionHref && actionLabel ? (
+            <Link className="panel-action activity-feed__action" to={actionHref}>
+              {actionLabel}
+            </Link>
+          ) : null}
+          <span className="activity-feed__count">Latest {limit}</span>
+        </div>
       </div>
 
-      {activities.length === 0 ? (
-        <div className="activity-feed__empty">No trace activity yet.</div>
+      {isLoading ? (
+        <div className="activity-feed__skeleton" aria-busy="true">
+          <span className="activity-feed__skeleton-row skeleton-line skeleton-line--wide" />
+          <span className="activity-feed__skeleton-row skeleton-line" />
+          <span className="activity-feed__skeleton-row skeleton-line skeleton-line--short" />
+        </div>
+      ) : activities.length === 0 ? (
+        <div className="activity-feed__empty">
+          <strong>No live activity yet</strong>
+          <span>Recent trace events will appear here as telemetry arrives.</span>
+        </div>
       ) : (
         <ol className="activity-feed__list">
-          {activities.map((activity) => (
-            <ActivityFeedItem activity={activity} key={activity.id} />
+          {activities.map((activity, index) => (
+            <ActivityFeedItem activity={activity} isLatest={index === 0} key={activity.id} />
           ))}
         </ol>
       )}

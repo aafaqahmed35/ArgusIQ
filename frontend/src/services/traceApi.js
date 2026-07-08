@@ -13,3 +13,23 @@ export async function fetchTraces() {
   const response = await traceClient.get('/traces')
   return response.data
 }
+
+export async function fetchSlowTraces() {
+  const response = await traceClient.get('/traces/slow')
+  return response.data
+}
+
+export async function fetchTraceCount() {
+  const response = await traceClient.get('/traces/analytics/count')
+  return response.data
+}
+
+export async function fetchAverageResponseTime() {
+  const response = await traceClient.get('/traces/analytics/average-response-time')
+  return response.data
+}
+
+export async function fetchHealth() {
+  const response = await traceClient.get('/health')
+  return response.data
+}

@@ -61,13 +61,32 @@ function getTraceMetadata(trace) {
   ]
 }
 
-function TraceDetailsDrawer({ trace, onClose }) {
-  const drawerPanelRef = useRef(null)
-  const isOpen = Boolean(trace)
+function TraceDetailBody({ trace }) {
   const metadata = trace ? getTraceMetadata(trace) : []
 
+  if (!trace) {
+    return (
+      <div className="trace-detail-panel__empty table-state table-state--rich">
+        <strong>Select a trace to inspect</strong>
+        <span>Request metadata will appear here when you select a row from the trace table.</span>
+      </div>
+    )
+  }
+
+  return (
+    <TraceDetailSection title="Request Metadata">
+      <TraceMetadataGrid items={metadata} />
+    </TraceDetailSection>
+  )
+}
+
+function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
+  const drawerPanelRef = useRef(null)
+  const isOpen = Boolean(trace)
+  const isPanel = variant === 'panel'
+
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || isPanel) {
       return undefined
     }
 
@@ -90,7 +109,40 @@ function TraceDetailsDrawer({ trace, onClose }) {
     return () => {
       document.removeEventListener('click', handleDocumentClick)
     }
-  }, [isOpen, onClose])
+  }, [isOpen, isPanel, onClose])
+
+  const header = (
+    <div className="trace-drawer__header operations-center__header">
+      <div>
+        <p className="section-kicker">Trace explorer</p>
+        <h2 id="trace-drawer-title">Trace Details</h2>
+      </div>
+      <button
+        className="trace-drawer__close"
+        type="button"
+        aria-label="Close trace details"
+        disabled={!isOpen}
+        onClick={onClose}
+      >
+        Close
+      </button>
+    </div>
+  )
+
+  if (isPanel) {
+    return (
+      <aside
+        className="trace-drawer trace-drawer--panel trace-drawer--open"
+        aria-label="Trace details"
+        aria-labelledby="trace-drawer-title"
+      >
+        <div className="trace-drawer__panel" ref={drawerPanelRef}>
+          {header}
+          <TraceDetailBody trace={trace} />
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <div className={`trace-drawer ${isOpen ? 'trace-drawer--open' : ''}`} aria-hidden={!isOpen}>
@@ -102,25 +154,8 @@ function TraceDetailsDrawer({ trace, onClose }) {
         aria-modal="true"
         aria-labelledby="trace-drawer-title"
       >
-        <div className="trace-drawer__header">
-          <div>
-            <p className="section-kicker">Trace explorer</p>
-            <h2 id="trace-drawer-title">Trace Details</h2>
-          </div>
-          <button
-            className="trace-drawer__close"
-            type="button"
-            aria-label="Close trace details"
-            disabled={!isOpen}
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-
-        <TraceDetailSection title="Request Metadata">
-          <TraceMetadataGrid items={metadata} />
-        </TraceDetailSection>
+        {header}
+        <TraceDetailBody trace={trace} />
       </aside>
     </div>
   )

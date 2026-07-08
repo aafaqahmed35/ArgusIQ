@@ -1,7 +1,7 @@
-import TraceDashboard from './pages/TraceDashboard'
+import AppRoutes from './router'
 
 function App() {
-  return <TraceDashboard />
+  return <AppRoutes />
 }
 
 export default App

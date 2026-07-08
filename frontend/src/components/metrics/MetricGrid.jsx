@@ -1,8 +1,8 @@
 import MetricCard from './MetricCard'
 
-function MetricGrid({ metrics }) {
+function MetricGrid({ metrics, isLoading = false, className = '' }) {
   return (
-    <section className="metric-grid" aria-label="Trace summary">
+    <section className={`metric-grid ${className}`.trim()} aria-label="Trace summary">
       {metrics.map((metric) => (
         <MetricCard
           key={metric.label}
@@ -10,6 +10,7 @@ function MetricGrid({ metrics }) {
           value={metric.value}
           detail={metric.detail}
           tone={metric.tone}
+          isLoading={isLoading}
         />
       ))}
     </section>
