@@ -1457,8 +1457,9 @@
 }
 
 .service-group-detail {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-height: 0;
 }
 
@@ -1480,13 +1481,17 @@
 }
 
 .service-group-detail__endpoints {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 10px;
   margin: 0;
   padding: 4px 16px 8px;
 }
 
 .service-group-detail__endpoints h3 {
+  flex-shrink: 0;
   margin: 0;
   color: #9aa9bc;
   font-size: 10px;
@@ -1503,15 +1508,20 @@
 }
 
 .service-group-detail__endpoint-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   gap: 8px;
   margin: 0;
-  padding: 0;
+  padding: 0 4px 4px 0;
   list-style: none;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .service-group-detail__endpoint-item {
   display: grid;
+  flex-shrink: 0;
   gap: 4px;
   padding: 10px 12px;
   border: 1px solid rgba(143, 165, 192, 0.18);
