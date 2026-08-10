@@ -1,19 +1,22 @@
+import { useState } from 'react'
 import { getTraceKey } from '../hooks/useTraces'
 
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
-const STATUS_FIELDS = ['status', 'statusCode', 'httpStatus']
-const METHOD_FIELDS = ['method', 'httpMethod', 'requestMethod']
+const STATUS_FIELDS = ['statusCode', 'status', 'httpStatus']
+const METHOD_FIELDS = ['httpMethod', 'method', 'requestMethod']
 const PATH_FIELDS = ['requestUri', 'path', 'endpoint', 'uri', 'url']
-const DURATION_FIELDS = ['executionTimeMs', 'responseTime', 'duration', 'latency', 'responseTimeMs']
+const DURATION_FIELDS = ['durationMs', 'executionTimeMs', 'responseTime', 'duration', 'latency']
 const SERVICE_FIELDS = ['serviceName', 'service', 'applicationName', 'appName']
+const OPERATION_FIELDS = ['rootSpanName', 'operationName', 'name']
+const TRACE_ID_FIELDS = ['traceId', 'id']
 
 function getFieldValue(trace, fields, fallback = '—') {
-  const key = fields.find((field) => trace?.[field] !== undefined && trace?.[field] !== null)
+  const key = fields.find((field) => trace?.[field] !== undefined && trace?.[field] !== null && trace?.[field] !== '')
   return key ? trace[key] : fallback
 }
 
 function formatDate(value) {
-  if (!value) {
+  if (!value || value === '—') {
     return '—'
   }
 
@@ -30,8 +33,8 @@ function formatDate(value) {
 }
 
 function formatDuration(value) {
-  if (value === '—') {
-    return value
+  if (value === '—' || value === null || value === undefined) {
+    return '—'
   }
 
   const numericValue = Number(value)
@@ -43,22 +46,30 @@ function formatDuration(value) {
   return `${numericValue.toLocaleString()} ms`
 }
 
-function getStatusClass(status) {
+function getStatusBadge(status, durationMs) {
+  const statusStr = String(status || '').toUpperCase()
   const numericStatus = Number(status)
 
-  if (Number.isNaN(numericStatus)) {
-    return 'status-pill status-pill--neutral'
+  if (statusStr === 'ERROR' || (!Number.isNaN(numericStatus) && numericStatus >= 500)) {
+    return { label: 'ERROR', className: 'status-pill status-pill--error' }
   }
 
-  if (numericStatus >= 500) {
-    return 'status-pill status-pill--error'
+  if (
+    statusStr === 'UNSET' ||
+    (!Number.isNaN(numericStatus) && numericStatus >= 400 && numericStatus < 500) ||
+    (Number(durationMs) >= 1000)
+  ) {
+    return { label: statusStr === 'UNSET' ? 'WARN' : statusStr || 'WARN', className: 'status-pill status-pill--warning' }
   }
 
-  if (numericStatus >= 400) {
-    return 'status-pill status-pill--warning'
-  }
+  return { label: statusStr === 'OK' ? 'OK' : statusStr || 'OK', className: 'status-pill status-pill--success' }
+}
 
-  return 'status-pill status-pill--success'
+function formatShortTraceId(traceId) {
+  if (!traceId || traceId === '—') return '—'
+  const str = String(traceId)
+  if (str.length <= 12) return str
+  return `${str.slice(0, 6)}...${str.slice(-4)}`
 }
 
 function TraceTable({
@@ -71,6 +82,17 @@ function TraceTable({
   emptyTitle = 'No traces available',
   emptyMessage = 'Trace records will appear here as soon as the frontend receives telemetry.',
 }) {
+  const [copiedTraceId, setCopiedTraceId] = useState(null)
+
+  const handleCopyTraceId = (e, traceId) => {
+    e.stopPropagation()
+    if (!traceId || traceId === '—') return
+
+    navigator.clipboard.writeText(String(traceId))
+    setCopiedTraceId(traceId)
+    setTimeout(() => setCopiedTraceId(null), 2000)
+  }
+
   if (isLoading) {
     return (
       <div className="table-state table-state--skeleton" role="status" aria-busy="true">
@@ -104,25 +126,31 @@ function TraceTable({
       <table className="trace-table">
         <thead>
           <tr>
-            <th scope="col">Time</th>
-            <th scope="col">Service</th>
-            <th scope="col">Method</th>
-            <th scope="col">Path</th>
             <th scope="col">Status</th>
-            <th scope="col">Response Time</th>
+            <th scope="col">Service</th>
+            <th scope="col">Operation</th>
+            <th scope="col">Method</th>
+            <th scope="col">Endpoint</th>
+            <th scope="col">Duration</th>
+            <th scope="col">Trace ID</th>
+            <th scope="col">Timestamp</th>
           </tr>
         </thead>
         <tbody>
           {traces.map((trace) => {
-            const status = getFieldValue(trace, STATUS_FIELDS)
-            const method = getFieldValue(trace, METHOD_FIELDS)
-            const path = getFieldValue(trace, PATH_FIELDS)
-            const service = getFieldValue(trace, SERVICE_FIELDS)
-            const duration = getFieldValue(trace, DURATION_FIELDS)
+            const rawStatus = getFieldValue(trace, STATUS_FIELDS, 'OK')
+            const duration = getFieldValue(trace, DURATION_FIELDS, 0)
+            const badge = getStatusBadge(rawStatus, duration)
+            const service = getFieldValue(trace, SERVICE_FIELDS, 'AtlasBank')
+            const operation = getFieldValue(trace, OPERATION_FIELDS, 'HTTP Request')
+            const method = getFieldValue(trace, METHOD_FIELDS, 'OTLP')
+            const path = getFieldValue(trace, PATH_FIELDS, '/')
+            const traceId = getFieldValue(trace, TRACE_ID_FIELDS, '—')
             const timestamp = getFieldValue(trace, DATE_FIELDS, null)
             const rowKey = getTraceKey(trace)
             const isSelected = selectedTraceKey === rowKey
             const isHighlighted = highlightedTraceKeys.has(rowKey)
+
             const rowClassName = [
               'trace-table__row',
               onTraceSelect ? 'trace-table__row--interactive' : '',
@@ -131,9 +159,11 @@ function TraceTable({
             ]
               .filter(Boolean)
               .join(' ')
+
             const handleTraceSelect = () => {
               onTraceSelect?.(trace)
             }
+
             const handleTraceSelectKeyDown = (event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
@@ -150,18 +180,43 @@ function TraceTable({
                 role={onTraceSelect ? 'button' : undefined}
                 tabIndex={onTraceSelect ? 0 : undefined}
               >
-                <td>{formatDate(timestamp)}</td>
+                <td>
+                  <span className={badge.className}>{badge.label}</span>
+                </td>
                 <td className="cell-strong">{service}</td>
+                <td className="cell-strong" title={operation}>
+                  {operation}
+                </td>
                 <td>
                   <span className="method-pill">{method}</span>
                 </td>
                 <td className="cell-path" title={path}>
                   {path}
                 </td>
-                <td>
-                  <span className={getStatusClass(status)}>{status}</span>
-                </td>
                 <td>{formatDuration(duration)}</td>
+                <td>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <code title={String(traceId)}>{formatShortTraceId(traceId)}</code>
+                    {traceId !== '—' && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyTraceId(e, traceId)}
+                        title="Copy Trace ID"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: copiedTraceId === traceId ? '#10b981' : '#94a3b8',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {copiedTraceId === traceId ? '✓' : '📋'}
+                      </button>
+                    )}
+                  </div>
+                </td>
+                <td>{formatDate(timestamp)}</td>
               </tr>
             )
           })}

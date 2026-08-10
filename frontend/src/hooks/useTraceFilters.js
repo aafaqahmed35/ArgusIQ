@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react'
 
-const METHOD_FIELDS = ['method', 'httpMethod', 'requestMethod']
+const METHOD_FIELDS = ['httpMethod', 'method', 'requestMethod']
 const PATH_FIELDS = ['requestUri', 'path', 'endpoint', 'uri', 'url']
-const STATUS_FIELDS = ['status', 'statusCode', 'httpStatus']
-const DURATION_FIELDS = ['executionTimeMs', 'responseTime', 'duration', 'latency', 'responseTimeMs']
+const STATUS_FIELDS = ['statusCode', 'status', 'httpStatus']
+const DURATION_FIELDS = ['durationMs', 'executionTimeMs', 'responseTime', 'duration', 'latency']
 const SERVICE_FIELDS = ['serviceName', 'service', 'applicationName', 'appName']
 
 const DEFAULT_FILTERS = {
@@ -27,22 +27,19 @@ function getDurationMs(trace) {
 }
 
 function getStatusCategory(trace) {
-  const statusCode = Number(getFieldValue(trace, STATUS_FIELDS, null))
+  const rawStatus = String(getFieldValue(trace, STATUS_FIELDS, '')).toUpperCase()
+  const statusCode = Number(rawStatus)
 
-  if (!Number.isFinite(statusCode)) {
-    return null
+  if (rawStatus === 'ERROR' || (!Number.isNaN(statusCode) && statusCode >= 500)) {
+    return '5xx'
   }
 
-  if (statusCode >= 200 && statusCode < 300) {
-    return '2xx'
-  }
-
-  if (statusCode >= 400 && statusCode < 500) {
+  if (rawStatus === 'UNSET' || (!Number.isNaN(statusCode) && statusCode >= 400 && statusCode < 500)) {
     return '4xx'
   }
 
-  if (statusCode >= 500 && statusCode < 600) {
-    return '5xx'
+  if (rawStatus === 'OK' || (!Number.isNaN(statusCode) && statusCode >= 200 && statusCode < 300)) {
+    return '2xx'
   }
 
   return null
@@ -91,9 +88,20 @@ export function useTraceFilters(traces) {
     return traces.filter((trace) => {
       const path = normalize(getFieldValue(trace, PATH_FIELDS, ''))
       const method = normalize(getFieldValue(trace, METHOD_FIELDS, ''))
-      const service = String(getFieldValue(trace, SERVICE_FIELDS, '')).trim()
+      const service = normalize(getFieldValue(trace, SERVICE_FIELDS, ''))
+      const rootSpanName = normalize(trace.rootSpanName || '')
+      const traceId = normalize(trace.traceId || trace.id || '')
+      const statusCode = normalize(trace.statusCode || '')
 
-      if (searchQuery && !path.includes(searchQuery)) {
+      if (
+        searchQuery &&
+        !path.includes(searchQuery) &&
+        !method.includes(searchQuery) &&
+        !service.includes(searchQuery) &&
+        !rootSpanName.includes(searchQuery) &&
+        !traceId.includes(searchQuery) &&
+        !statusCode.includes(searchQuery)
+      ) {
         return false
       }
 
@@ -109,7 +117,7 @@ export function useTraceFilters(traces) {
         return false
       }
 
-      if (filters.service !== 'all' && service !== filters.service) {
+      if (filters.service !== 'all' && service !== normalize(filters.service)) {
         return false
       }
 

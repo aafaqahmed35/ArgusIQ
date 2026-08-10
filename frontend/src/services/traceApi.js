@@ -19,6 +19,12 @@ export async function fetchSlowTraces() {
   return response.data
 }
 
+export async function fetchTraceByTraceId(traceId) {
+  if (!traceId) return null
+  const response = await traceClient.get(`/traces/${encodeURIComponent(traceId)}`)
+  return response.data
+}
+
 export async function fetchTraceCount() {
   const response = await traceClient.get('/traces/analytics/count')
   return response.data

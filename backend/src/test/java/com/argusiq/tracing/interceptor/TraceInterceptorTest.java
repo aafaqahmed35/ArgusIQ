@@ -1,6 +1,6 @@
 package com.argusiq.tracing.interceptor;
 
-import com.argusiq.tracing.service.TraceLogService;
+import com.argusiq.tracing.service.TraceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -16,8 +16,8 @@ import static org.mockito.Mockito.verify;
 
 class TraceInterceptorTest {
 
-    private final TraceLogService traceLogService = mock(TraceLogService.class);
-    private final TraceInterceptor traceInterceptor = new TraceInterceptor(traceLogService);
+    private final TraceService traceService = mock(TraceService.class);
+    private final TraceInterceptor traceInterceptor = new TraceInterceptor(traceService);
 
     @Test
     void excludesTraceEndpointsFromTracing() throws Exception {
@@ -27,7 +27,7 @@ class TraceInterceptorTest {
         traceInterceptor.preHandle(request, response, new Object());
         traceInterceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(traceLogService, never()).saveTrace(any(), any(), any(), any());
+        verify(traceService, never()).saveHttpRequestTrace(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -41,7 +41,7 @@ class TraceInterceptorTest {
         traceInterceptor.preHandle(request, response, new Object());
         traceInterceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(traceLogService, never()).saveTrace(any(), any(), any(), any());
+        verify(traceService, never()).saveHttpRequestTrace(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -52,7 +52,7 @@ class TraceInterceptorTest {
         traceInterceptor.preHandle(request, response, new Object());
         traceInterceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(traceLogService, never()).saveTrace(any(), any(), any(), any());
+        verify(traceService, never()).saveHttpRequestTrace(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -63,7 +63,7 @@ class TraceInterceptorTest {
         traceInterceptor.preHandle(request, response, new Object());
         traceInterceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(traceLogService, never()).saveTrace(any(), any(), any(), any());
+        verify(traceService, never()).saveHttpRequestTrace(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -74,11 +74,12 @@ class TraceInterceptorTest {
         traceInterceptor.preHandle(request, response, new Object());
         traceInterceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(traceLogService).saveTrace(
+        verify(traceService).saveHttpRequestTrace(
                 eq("GET"),
                 eq("/api/v1/orders"),
                 anyLong(),
-                any(LocalDateTime.class)
+                any(LocalDateTime.class),
+                eq(200)
         );
     }
 }

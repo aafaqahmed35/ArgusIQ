@@ -1,6 +1,6 @@
 package com.argusiq.tracing.interceptor;
 
-import com.argusiq.tracing.service.TraceLogService;
+import com.argusiq.tracing.service.TraceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -22,6 +22,16 @@ public class TraceInterceptor implements HandlerInterceptor {
     private static final List<String> IGNORED_PATH_PATTERNS = List.of(
             "/api/v1/traces",
             "/api/v1/traces/**",
+            "/api/v1/metrics",
+            "/api/v1/metrics/**",
+            "/api/v1/search",
+            "/api/v1/search/**",
+            "/api/v1/services",
+            "/api/v1/services/**",
+            "/api/v1/alerts",
+            "/api/v1/alerts/**",
+            "/v1/traces",
+            "/v1/traces/**",
             "/api/v1/health",
             "/api/v1/health/**",
             "/ws",
@@ -41,12 +51,12 @@ public class TraceInterceptor implements HandlerInterceptor {
             "/webjars/**"
     );
 
-    private final TraceLogService traceLogService;
+    private final TraceService traceService;
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
-    public TraceInterceptor(TraceLogService traceLogService) {
-        this.traceLogService = traceLogService;
+    public TraceInterceptor(TraceService traceService) {
+        this.traceService = traceService;
     }
 
     @Override
@@ -93,13 +103,12 @@ public class TraceInterceptor implements HandlerInterceptor {
 
         LocalDateTime timestamp = LocalDateTime.now();
 
-        System.out.println("INTERCEPTOR SAVE TRACE CALLED");
-
-        traceLogService.saveTrace(
+        traceService.saveHttpRequestTrace(
                 request.getMethod(),
                 request.getRequestURI(),
                 executionTime,
-                timestamp
+                timestamp,
+                response.getStatus()
         );
 
         logger.info("""
