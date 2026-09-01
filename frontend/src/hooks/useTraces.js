@@ -1,7 +1,12 @@
-import { useTraceContext } from '../context/TraceContext'
+import { useContext } from 'react'
+import { TraceContext } from '../context/traceContextCore'
 
-export { getTraceKey } from '../context/TraceContext'
+export { getTraceKey } from '../context/traceContextCore'
 
 export function useTraces() {
-  return useTraceContext()
+  const context = useContext(TraceContext)
+  if (!context) {
+    throw new Error('useTraces must be used within a TraceProvider')
+  }
+  return context
 }

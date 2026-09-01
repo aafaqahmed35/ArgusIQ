@@ -1,4 +1,4 @@
-import React, { memo } from 'react'
+import { memo } from 'react'
 
 function getStatusColor(statusCode) {
   const code = (statusCode || '').toUpperCase()

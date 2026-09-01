@@ -1,5 +1,3 @@
-import React from 'react'
-
 function getStatusColor(statusCode) {
   const code = (statusCode || '').toUpperCase()
   if (code === 'ERROR' || code === '5XX' || code === '500') return '#EF4444'
@@ -22,7 +20,7 @@ function InvestigationTimeline({ spans = [], traceSummary = {}, onSelectSpan }) 
     const t = new Date(s.startTime).getTime()
     if (!Number.isNaN(t) && t < minStart) minStart = t
   })
-  if (minStart === Number.MAX_SAFE_INTEGER) minStart = Date.now()
+  if (minStart === Number.MAX_SAFE_INTEGER) minStart = 0
 
   // Sort spans chronologically by start time
   const timelineEvents = spans.map((span) => {

@@ -1,5 +1,6 @@
 package com.argusiq.tracing;
 
+import com.argusiq.AbstractArgusIqIntegrationTest;
 import com.argusiq.tracing.dto.AlertRequest;
 import com.argusiq.tracing.dto.AlertResponse;
 import com.argusiq.tracing.dto.AlertRuleRequest;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Map;
@@ -37,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
-class Phase2BackendServiceIntegrationTest {
+class Phase2BackendServiceIntegrationTest extends AbstractArgusIqIntegrationTest {
 
     @Autowired
     private TraceRepository traceRepository;
@@ -87,12 +89,12 @@ class Phase2BackendServiceIntegrationTest {
         assertEquals(3, metrics.getThroughput());
         assertEquals(250.0, metrics.getAverageLatencyMs());
         assertEquals(200.0, metrics.getMedianLatencyMs());
-        assertTrue(metrics.getP95LatencyMs() > 500.0);
+        assertEquals(470.0, metrics.getP95LatencyMs(), 0.001);
         assertEquals(50, metrics.getMinimumLatencyMs());
         assertEquals(500, metrics.getMaximumLatencyMs());
         assertEquals(100.0 / 3.0, metrics.getErrorRate(), 0.01);
         assertEquals(2, metrics.getUniqueEndpoints());
-        assertEquals(2, metrics.getUniqueServices());
+        assertEquals(1, metrics.getUniqueServices());
         assertFalse(metrics.getStatusCodeDistribution().isEmpty());
     }
 
@@ -145,7 +147,7 @@ class Phase2BackendServiceIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertEquals(2, service.getRequestVolume());
+        assertEquals(3, service.getRequestVolume());
         assertTrue(service.getErrorRate() > 0.0);
         assertFalse(service.getTopEndpoints().isEmpty());
         assertTrue(servicesBackendService.getService(service.getId()).orElseThrow().getRecentTraces().size() >= 1);
@@ -209,7 +211,7 @@ class Phase2BackendServiceIntegrationTest {
         traceRepository.save(trace("trace-fast", "gateway", "GET", "/health", "OK", 50L, "span-fast-root", null));
         traceRepository.save(trace("trace-ok", "gateway", "POST", "/customer", "OK", 200L, "span-ok-root", null));
         TraceEntity error = trace("trace-error", "gateway", "POST", "/customer", "ERROR", 500L, "span-error-root", "customer-7");
-        SpanEntity child = new SpanEntity("span-error-child", "trace-error", "span-error-root", "Customer lookup", "CLIENT", LocalDateTime.now(ZoneOffset.UTC).minusMillis(450), LocalDateTime.now(ZoneOffset.UTC), 450L, "ERROR", "timeout", "customer-service");
+        SpanEntity child = new SpanEntity("span-error-child", "trace-error", "span-error-root", "Customer lookup", "CLIENT", LocalDateTime.now(ZoneOffset.UTC).minus(Duration.ofMillis(450)), LocalDateTime.now(ZoneOffset.UTC), 450L, "ERROR", "timeout", "customer-service");
         child.setCustomerId("customer-7");
         error.addSpan(child);
         traceRepository.save(error);

@@ -1,7 +1,7 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 
-const WEBSOCKET_URL = 'http://localhost:8080/ws'
+const WEBSOCKET_URL = import.meta.env.VITE_ARGUSIQ_WEBSOCKET_URL ?? 'http://localhost:8080/ws'
 const TRACE_TOPIC = '/topic/traces'
 
 export function createTraceWebSocketClient({ onTraceReceived, onConnect, onError, onReconnecting }) {

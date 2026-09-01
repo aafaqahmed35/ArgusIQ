@@ -3,7 +3,6 @@ package com.argusiq.tracing.service;
 import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.TraceEntity;
 import com.argusiq.tracing.mapper.OtlpMapper;
-import com.argusiq.tracing.repository.TraceRepository;
 import com.google.protobuf.ByteString;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
@@ -16,32 +15,42 @@ import io.opentelemetry.proto.trace.v1.Span;
 import io.opentelemetry.proto.trace.v1.Status;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class OtlpIngestionServiceTest {
 
-    private TraceRepository traceRepository;
     private ServiceDiscoveryService serviceDiscoveryService;
+    private OtlpTraceMergeService traceMergeService;
     private SimpMessagingTemplate messagingTemplate;
     private OtlpIngestionService otlpIngestionService;
 
     @BeforeEach
     void setUp() {
-        traceRepository = mock(TraceRepository.class);
         serviceDiscoveryService = mock(ServiceDiscoveryService.class);
+        traceMergeService = mock(OtlpTraceMergeService.class);
         messagingTemplate = mock(SimpMessagingTemplate.class);
         OtlpMapper otlpMapper = new OtlpMapper();
+        TraceResponseDto mergedTrace = mock(TraceResponseDto.class);
+        when(mergedTrace.getSpanCount()).thenReturn(1);
+        when(mergedTrace.getId()).thenReturn(1L);
+        when(traceMergeService.mergeTrace(any(TraceEntity.class))).thenReturn(mergedTrace);
 
         otlpIngestionService = new OtlpIngestionService(
-                traceRepository,
                 serviceDiscoveryService,
+                traceMergeService,
                 otlpMapper,
                 messagingTemplate
         );
@@ -94,16 +103,11 @@ class OtlpIngestionServiceTest {
                 .addResourceSpans(resourceSpans)
                 .build();
 
-        when(traceRepository.save(any(TraceEntity.class))).thenAnswer(i -> {
-            TraceEntity t = i.getArgument(0);
-            return t;
-        });
-
         ExportTraceServiceResponse response = otlpIngestionService.ingestProtobufTraces(request.toByteArray());
 
         assertNotNull(response);
         verify(serviceDiscoveryService).discoverService("AtlasBankService", "production", null, null);
-        verify(traceRepository).save(any(TraceEntity.class));
+        verify(traceMergeService).mergeTrace(any(TraceEntity.class));
         verify(messagingTemplate).convertAndSend(eq("/topic/traces"), any(TraceResponseDto.class));
     }
 
@@ -128,11 +132,41 @@ class OtlpIngestionServiceTest {
         }
         byte[] compressedPayload = baos.toByteArray();
 
-        when(traceRepository.save(any(TraceEntity.class))).thenAnswer(i -> i.getArgument(0));
-
         ExportTraceServiceResponse response = otlpIngestionService.ingestProtobufTraces(compressedPayload);
 
         assertNotNull(response);
-        verify(traceRepository).save(any(TraceEntity.class));
+        verify(traceMergeService).mergeTrace(any(TraceEntity.class));
+    }
+
+    @Test
+    void retriesConcurrentInitialInsertWithAFreshAggregate() throws Exception {
+        byte[] traceId = new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+        byte[] spanId = new byte[]{1, 2, 3, 4, 5, 6, 7, 8};
+        Span span = Span.newBuilder()
+                .setTraceId(ByteString.copyFrom(traceId))
+                .setSpanId(ByteString.copyFrom(spanId))
+                .setName("GET /retry")
+                .setKind(Span.SpanKind.SPAN_KIND_SERVER)
+                .setStartTimeUnixNano(1700000000000000000L)
+                .setEndTimeUnixNano(1700000000100000000L)
+                .build();
+        ExportTraceServiceRequest request = ExportTraceServiceRequest.newBuilder()
+                .addResourceSpans(ResourceSpans.newBuilder()
+                        .addScopeSpans(ScopeSpans.newBuilder().addSpans(span).build())
+                        .build())
+                .build();
+        TraceResponseDto mergedTrace = mock(TraceResponseDto.class);
+        when(mergedTrace.getSpanCount()).thenReturn(1);
+        when(mergedTrace.getId()).thenReturn(2L);
+        when(traceMergeService.mergeTrace(any(TraceEntity.class)))
+                .thenThrow(new DataIntegrityViolationException("concurrent trace insert"))
+                .thenReturn(mergedTrace);
+
+        otlpIngestionService.ingestProtobufTraces(request.toByteArray());
+
+        ArgumentCaptor<TraceEntity> traces = ArgumentCaptor.forClass(TraceEntity.class);
+        verify(traceMergeService, times(2)).mergeTrace(traces.capture());
+        List<TraceEntity> attempts = traces.getAllValues();
+        assertNotSame(attempts.get(0), attempts.get(1));
     }
 }

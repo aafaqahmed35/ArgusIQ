@@ -1,29 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchTraces } from '../services/traceApi'
 import { connectTraceWebSocket } from '../websocket/websocketClient'
-
-export const WEBSOCKET_STATUS = {
-  CONNECTING: 'CONNECTING',
-  LIVE: 'LIVE',
-  ERROR: 'ERROR',
-}
-
-export function getTraceKey(trace) {
-  if (trace?.id !== undefined && trace?.id !== null) {
-    return `id:${trace.id}`
-  }
-
-  if (trace?.traceId !== undefined && trace?.traceId !== null) {
-    return `traceId:${trace.traceId}`
-  }
-
-  return [
-    trace?.httpMethod ?? trace?.method ?? '',
-    trace?.requestUri ?? trace?.path ?? trace?.endpoint ?? '',
-    trace?.timestamp ?? trace?.createdAt ?? '',
-    trace?.executionTimeMs ?? trace?.responseTime ?? trace?.duration ?? '',
-  ].join('|')
-}
+import { TraceContext, WEBSOCKET_STATUS, getTraceKey } from './traceContextCore'
 
 function dedupeTraces(traces) {
   const seenTraceKeys = new Set()
@@ -39,8 +17,6 @@ function dedupeTraces(traces) {
     return true
   })
 }
-
-export const TraceContext = createContext(null)
 
 export function TraceProvider({ children }) {
   const [traces, setTraces] = useState([])
@@ -69,7 +45,9 @@ export function TraceProvider({ children }) {
   useEffect(() => {
     let isSubscribed = true
 
-    loadTraces()
+    const initialLoadTimer = window.setTimeout(() => {
+      loadTraces()
+    }, 0)
 
     const disconnect = connectTraceWebSocket({
       onTraceReceived: (trace) => {
@@ -84,6 +62,7 @@ export function TraceProvider({ children }) {
 
     return () => {
       isSubscribed = false
+      window.clearTimeout(initialLoadTimer)
       disconnect()
     }
   }, [loadTraces, handleRealtimeTrace])
@@ -101,12 +80,4 @@ export function TraceProvider({ children }) {
       {children}
     </TraceContext.Provider>
   )
-}
-
-export function useTraceContext() {
-  const context = useContext(TraceContext)
-  if (!context) {
-    throw new Error('useTraceContext must be used within a TraceProvider')
-  }
-  return context
 }

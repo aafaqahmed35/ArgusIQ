@@ -10,6 +10,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDateTime;
 
@@ -26,6 +27,8 @@ import java.time.LocalDateTime;
         @Index(name = "idx_span_account", columnList = "account_id"),
         @Index(name = "idx_span_loan", columnList = "loan_id"),
         @Index(name = "idx_span_transaction", columnList = "transaction_id")
+}, uniqueConstraints = {
+        @UniqueConstraint(name = "uk_span_trace_span", columnNames = {"trace_id", "span_id"})
 })
 public class SpanEntity {
 
@@ -207,5 +210,33 @@ public class SpanEntity {
 
     public void setTransactionId(String transactionId) {
         this.transactionId = transactionId;
+    }
+
+    public void mergeFrom(SpanEntity incoming) {
+        if (incoming == null
+                || !traceId.equals(incoming.traceId)
+                || !spanId.equals(incoming.spanId)) {
+            throw new IllegalArgumentException("Only spans with the same trace and span identity can be merged");
+        }
+
+        parentSpanId = incoming.parentSpanId;
+        name = incoming.name;
+        kind = incoming.kind;
+        startTime = incoming.startTime;
+        endTime = incoming.endTime;
+        durationMs = incoming.durationMs;
+        statusCode = incoming.statusCode;
+        statusMessage = incoming.statusMessage;
+        serviceName = incoming.serviceName;
+        httpMethod = preferIncoming(incoming.httpMethod, httpMethod);
+        httpStatusCode = incoming.httpStatusCode != null ? incoming.httpStatusCode : httpStatusCode;
+        customerId = preferIncoming(incoming.customerId, customerId);
+        accountId = preferIncoming(incoming.accountId, accountId);
+        loanId = preferIncoming(incoming.loanId, loanId);
+        transactionId = preferIncoming(incoming.transactionId, transactionId);
+    }
+
+    private <T> T preferIncoming(T incoming, T existing) {
+        return incoming != null ? incoming : existing;
     }
 }

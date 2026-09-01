@@ -17,4 +17,5 @@ frontend/dist/
 *.log
 
 # Env
-.env
+.env*
+!.env.example

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { flattenSpanTree } from '../../lib/spanTreeBuilder'
 import SpanNode from './SpanNode'
 

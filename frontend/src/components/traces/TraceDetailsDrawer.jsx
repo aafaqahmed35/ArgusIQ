@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchTraceByTraceId } from '../../services/traceApi'
 import { buildSpanTree } from '../../lib/spanTreeBuilder'
@@ -75,26 +75,24 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
   // Fetch full trace details when trace is selected
   useEffect(() => {
-    if (!trace) {
-      setFullTraceDetail(null)
-      setSelectedSpan(null)
-      return
-    }
+    if (!trace) return undefined
 
-    let isSubscribed = true
     const traceId = trace.traceId || trace.id
 
-    if (traceId) {
+    if (!traceId) return undefined
+
+    let isSubscribed = true
+    const fetchTimer = window.setTimeout(() => {
       setIsLoadingDetail(true)
       fetchTraceByTraceId(traceId)
         .then((detail) => {
           if (isSubscribed) {
-            setFullTraceDetail(detail || null)
+            setFullTraceDetail({ traceId, detail: detail || null })
           }
         })
         .catch(() => {
           if (isSubscribed) {
-            setFullTraceDetail(null)
+            setFullTraceDetail({ traceId, detail: null })
           }
         })
         .finally(() => {
@@ -102,10 +100,11 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
             setIsLoadingDetail(false)
           }
         })
-    }
+    }, 0)
 
     return () => {
       isSubscribed = false
+      window.clearTimeout(fetchTimer)
     }
   }, [trace])
 
@@ -125,9 +124,14 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   }, [isOpen, isPanel, onClose])
 
   // Aggregate telemetry models
-  const summary = fullTraceDetail?.summary || trace || {}
-  const spans = fullTraceDetail?.spans || (trace?.spans ? trace.spans : [])
-  const metadata = fullTraceDetail?.metadata || {}
+  const selectedTraceId = trace?.traceId || trace?.id
+  const effectiveFullTraceDetail =
+    selectedTraceId && fullTraceDetail?.traceId === selectedTraceId ? fullTraceDetail.detail : null
+  const summary = useMemo(() => effectiveFullTraceDetail?.summary || trace || {}, [effectiveFullTraceDetail, trace])
+  const spans = useMemo(
+    () => effectiveFullTraceDetail?.spans || (trace?.spans ? trace.spans : []),
+    [effectiveFullTraceDetail, trace]
+  )
 
   const traceId = summary.traceId || summary.id || trace?.traceId || trace?.id
   const serviceName = summary.serviceName || trace?.serviceName || 'AtlasBank'

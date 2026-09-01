@@ -3,7 +3,7 @@
  * Generates per-service breakdowns, latency distributions, and contribution rankings.
  */
 
-export function calculateServiceStats(spans = [], totalTraceDurationMs = 1) {
+export function calculateServiceStats(spans = []) {
   if (!Array.isArray(spans) || spans.length === 0) {
     return []
   }

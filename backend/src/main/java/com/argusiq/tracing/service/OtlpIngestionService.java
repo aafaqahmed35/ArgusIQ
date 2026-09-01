@@ -4,7 +4,6 @@ import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
 import com.argusiq.tracing.mapper.OtlpMapper;
-import com.argusiq.tracing.repository.TraceRepository;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
@@ -15,9 +14,10 @@ import io.opentelemetry.proto.trace.v1.ScopeSpans;
 import io.opentelemetry.proto.trace.v1.Span;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
@@ -34,25 +35,25 @@ public class OtlpIngestionService {
 
     private static final Logger logger = LoggerFactory.getLogger(OtlpIngestionService.class);
     private static final String TRACE_TOPIC = "/topic/traces";
+    private static final int MAX_MERGE_ATTEMPTS = 3;
 
-    private final TraceRepository traceRepository;
     private final ServiceDiscoveryService serviceDiscoveryService;
+    private final OtlpTraceMergeService traceMergeService;
     private final OtlpMapper otlpMapper;
     private final SimpMessagingTemplate messagingTemplate;
 
     public OtlpIngestionService(
-            TraceRepository traceRepository,
             ServiceDiscoveryService serviceDiscoveryService,
+            OtlpTraceMergeService traceMergeService,
             OtlpMapper otlpMapper,
             SimpMessagingTemplate messagingTemplate
     ) {
-        this.traceRepository = traceRepository;
         this.serviceDiscoveryService = serviceDiscoveryService;
+        this.traceMergeService = traceMergeService;
         this.otlpMapper = otlpMapper;
         this.messagingTemplate = messagingTemplate;
     }
 
-    @Transactional
     public ExportTraceServiceResponse ingestProtobufTraces(byte[] payload) throws InvalidProtocolBufferException {
         if (payload == null || payload.length == 0) {
             logger.debug("Received empty OTLP payload");
@@ -100,7 +101,7 @@ public class OtlpIngestionService {
                 language = otlpMapper.getAttributeValue(resourceAttrs, "process.runtime.name");
             }
 
-            serviceDiscoveryService.discoverService(serviceName, environment, version, language);
+            discoverService(serviceName, environment, version, language);
 
             for (ScopeSpans scopeSpans : resourceSpans.getScopeSpansList()) {
                 for (Span span : scopeSpans.getSpansList()) {
@@ -126,12 +127,25 @@ public class OtlpIngestionService {
     }
 
     private void processTrace(String traceId, List<PendingSpan> pendingSpans) {
-        List<Span> spans = pendingSpans != null
-                ? pendingSpans.stream().map(PendingSpan::span).toList()
-                : List.of();
-        if (spans == null || spans.isEmpty()) {
+        List<PendingSpan> uniquePendingSpans = deduplicateBatch(pendingSpans);
+        if (uniquePendingSpans.isEmpty()) {
             return;
         }
+
+        TraceResponseDto dto = mergeTraceWithRetry(traceId, uniquePendingSpans);
+        logger.info(
+                "Merged OTLP traceId={} with {} incoming spans; canonical span count={}",
+                traceId,
+                uniquePendingSpans.size(),
+                dto.getSpanCount()
+        );
+
+        messagingTemplate.convertAndSend(TRACE_TOPIC, dto);
+        logger.info("Broadcasted committed OTLP trace {} to {}", dto.getId(), TRACE_TOPIC);
+    }
+
+    private TraceEntity buildIncomingTrace(String traceId, List<PendingSpan> pendingSpans) {
+        List<Span> spans = pendingSpans.stream().map(PendingSpan::span).toList();
 
         PendingSpan rootPendingSpan = pendingSpans.stream()
                 .filter(s -> "SPAN_KIND_SERVER".equals(s.span().getKind().name()))
@@ -194,31 +208,18 @@ public class OtlpIngestionService {
         boolean hasError = spans.stream().anyMatch(s -> s.getStatus().getCode().name().contains("ERROR"));
         String statusCode = hasError ? "ERROR" : "OK";
         String statusMessage = rootSpan.getStatus().getMessage();
-        final String finalHttpMethod = httpMethod;
-        final String finalRequestUri = requestUri;
-
-        TraceEntity traceEntity = traceRepository.findByTraceIdWithSpans(traceId)
-                .orElseGet(() -> new TraceEntity(
-                        traceId,
-                        serviceName,
-                        rootSpanName,
-                        startTime,
-                        endTime,
-                        durationMs,
-                        statusCode,
-                        statusMessage,
-                        finalHttpMethod,
-                        finalRequestUri
-                ));
-        traceEntity.setServiceName(serviceName);
-        traceEntity.setRootSpanName(rootSpanName);
-        traceEntity.setStartTime(startTime);
-        traceEntity.setEndTime(endTime);
-        traceEntity.setDurationMs(durationMs);
-        traceEntity.setStatusCode(statusCode);
-        traceEntity.setStatusMessage(statusMessage);
-        traceEntity.setHttpMethod(httpMethod);
-        traceEntity.setRequestUri(requestUri);
+        TraceEntity traceEntity = new TraceEntity(
+                traceId,
+                serviceName,
+                rootSpanName,
+                startTime,
+                endTime,
+                durationMs,
+                statusCode,
+                statusMessage,
+                httpMethod,
+                requestUri
+        );
         traceEntity.setRootSpanId(otlpMapper.bytesToHex(rootSpan.getSpanId()));
         traceEntity.setBusinessOperation(businessOperation);
         traceEntity.setEntryEndpoint(requestUri);
@@ -226,19 +227,55 @@ public class OtlpIngestionService {
         traceEntity.setCriticalPathDurationMs(Math.max(0L, (longestSpan.getEndTimeUnixNano() - longestSpan.getStartTimeUnixNano()) / 1_000_000L));
         traceEntity.setTimelineSummary(buildTimelineSummary(pendingSpans, durationMs));
         traceEntity.setEvidenceGraphId("trace:" + traceId);
-        traceEntity.clearSpans();
 
         for (PendingSpan pendingSpan : pendingSpans) {
             SpanEntity spanEntity = otlpMapper.mapToSpanEntity(pendingSpan.span(), pendingSpan.serviceName());
             traceEntity.addSpan(spanEntity);
         }
+        return traceEntity;
+    }
 
-        TraceEntity savedTrace = traceRepository.save(traceEntity);
-        logger.info("Ingested OTLP traceId={} with {} spans across {} services", traceId, spans.size(), pendingSpans.stream().map(PendingSpan::serviceName).distinct().count());
+    private List<PendingSpan> deduplicateBatch(List<PendingSpan> pendingSpans) {
+        if (pendingSpans == null || pendingSpans.isEmpty()) {
+            return List.of();
+        }
 
-        TraceResponseDto dto = otlpMapper.mapToTraceResponseDto(savedTrace);
-        messagingTemplate.convertAndSend(TRACE_TOPIC, dto);
-        logger.info("Broadcasted OTLP trace {} to {}", savedTrace.getId(), TRACE_TOPIC);
+        Map<String, PendingSpan> spansById = new LinkedHashMap<>();
+        for (PendingSpan pendingSpan : pendingSpans) {
+            String spanId = otlpMapper.bytesToHex(pendingSpan.span().getSpanId());
+            if (spanId == null || spanId.isBlank()) {
+                logger.warn("Ignoring OTLP span without a valid span ID");
+                continue;
+            }
+            spansById.put(spanId, pendingSpan);
+        }
+        return List.copyOf(spansById.values());
+    }
+
+    private TraceResponseDto mergeTraceWithRetry(String traceId, List<PendingSpan> pendingSpans) {
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_MERGE_ATTEMPTS; attempt++) {
+            try {
+                return traceMergeService.mergeTrace(buildIncomingTrace(traceId, pendingSpans));
+            } catch (DataIntegrityViolationException | PessimisticLockingFailureException ex) {
+                lastFailure = ex;
+                logger.warn(
+                        "Retrying OTLP merge for traceId={} after concurrent write conflict ({}/{})",
+                        traceId,
+                        attempt,
+                        MAX_MERGE_ATTEMPTS
+                );
+            }
+        }
+        throw lastFailure != null ? lastFailure : new IllegalStateException("OTLP trace merge failed");
+    }
+
+    private void discoverService(String serviceName, String environment, String version, String language) {
+        try {
+            serviceDiscoveryService.discoverService(serviceName, environment, version, language);
+        } catch (DataIntegrityViolationException firstInsertRace) {
+            serviceDiscoveryService.discoverService(serviceName, environment, version, language);
+        }
     }
 
     private String buildTimelineSummary(List<PendingSpan> pendingSpans, long durationMs) {

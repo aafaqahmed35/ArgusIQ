@@ -1,8 +1,10 @@
 package com.argusiq.tracing.repository;
 
 import com.argusiq.tracing.entity.TraceEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +19,10 @@ public interface TraceRepository extends JpaRepository<TraceEntity, Long> {
 
     @Query("SELECT DISTINCT t FROM TraceEntity t LEFT JOIN FETCH t.spans WHERE t.traceId = :traceId")
     Optional<TraceEntity> findByTraceIdWithSpans(@Param("traceId") String traceId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM TraceEntity t WHERE t.traceId = :traceId")
+    Optional<TraceEntity> findByTraceIdForUpdate(@Param("traceId") String traceId);
 
     List<TraceEntity> findTop5ByOrderByDurationMsDesc();
 

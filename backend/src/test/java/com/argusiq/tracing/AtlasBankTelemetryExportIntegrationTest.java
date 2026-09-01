@@ -1,5 +1,6 @@
 package com.argusiq.tracing;
 
+import com.argusiq.AbstractArgusIqIntegrationTest;
 import com.argusiq.tracing.entity.MonitoredService;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
@@ -20,9 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Optional;
 
@@ -32,13 +32,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 
 @SpringBootTest
-class AtlasBankTelemetryExportIntegrationTest {
+@AutoConfigureMockMvc
+class AtlasBankTelemetryExportIntegrationTest extends AbstractArgusIqIntegrationTest {
 
     @Autowired
-    private WebApplicationContext context;
-
     private MockMvc mockMvc;
 
     @Autowired
@@ -49,7 +49,6 @@ class AtlasBankTelemetryExportIntegrationTest {
 
     @BeforeEach
     void setup() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
         traceRepository.deleteAll();
         serviceRepository.deleteAll();
     }
@@ -128,6 +127,7 @@ class AtlasBankTelemetryExportIntegrationTest {
 
         // 1. Post OTLP Protobuf telemetry to /v1/traces
         mockMvc.perform(post("/v1/traces")
+                        .with(httpBasic(INGESTION_USERNAME, INGESTION_PASSWORD))
                         .contentType("application/x-protobuf")
                         .content(request.toByteArray()))
                 .andExpect(status().isOk());
@@ -165,7 +165,8 @@ class AtlasBankTelemetryExportIntegrationTest {
         assertEquals("00f067aa0ba902b7", child.getParentSpanId());
 
         // 5. Verify Backward Compatible GET /api/v1/traces
-        mockMvc.perform(get("/api/v1/traces"))
+        mockMvc.perform(get("/api/v1/traces")
+                        .with(httpBasic(INVESTIGATION_USERNAME, INVESTIGATION_PASSWORD)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].httpMethod").value("POST"))
                 .andExpect(jsonPath("$[0].requestUri").value("/api/v1/accounts/transfer"));

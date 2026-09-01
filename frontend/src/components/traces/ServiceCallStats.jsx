@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 import { calculateServiceStats } from '../../lib/traceMetrics'
 
 function ServiceCallStats({ spans = [], totalTraceDurationMs = 1 }) {
