@@ -105,9 +105,10 @@ function TraceTable({
   }
 
   if (error) {
+    const backendMessage = error?.response?.data?.message
     return (
       <div className="table-state table-state--error" role="alert">
-        Unable to load traces from the backend.
+        {backendMessage || 'Unable to load traces from the backend.'}
       </div>
     )
   }

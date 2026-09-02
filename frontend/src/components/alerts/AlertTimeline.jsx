@@ -87,7 +87,7 @@ function AlertTimeline({
         ) : alerts.length === 0 ? (
           <div className="alert-timeline__empty analytics-empty" role="status">
             <strong>No active derived alerts</strong>
-            <span>Derived signals from loaded traces and connection state are within normal bounds.</span>
+            <span>Derived signals from the recent trace window and connection state are within normal bounds.</span>
             <small>Alerts update live as telemetry and connection state change.</small>
           </div>
         ) : (

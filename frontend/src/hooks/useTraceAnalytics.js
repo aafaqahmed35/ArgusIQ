@@ -9,9 +9,9 @@ import {
 
 export { formatDuration } from '../lib/traceAggregation'
 
-export function useTraceAnalytics(traces) {
+export function useTraceAnalytics(recentTraces) {
   return useMemo(() => {
-    const normalizedTraces = normalizeTraces(traces)
+    const normalizedTraces = normalizeTraces(recentTraces)
     const durations = normalizedTraces.map((trace) => trace.durationMs).filter((duration) => duration !== null)
     const endpoints = summarizeEndpoints(normalizedTraces)
     const slowestEndpoint = endpoints
@@ -24,15 +24,15 @@ export function useTraceAnalytics(traces) {
     return {
       metrics: [
         {
-          label: 'Total Traces',
-          value: traces.length.toLocaleString(),
-          detail: 'Loaded records',
+          label: 'Recent Traces',
+          value: recentTraces.length.toLocaleString(),
+          detail: 'Bounded recent window',
           tone: 'signal',
         },
         {
           label: 'Average Response Time',
           value: formatDuration(averageResponseTime),
-          detail: 'Across visible traces',
+          detail: 'Across recent traces',
           tone: 'latency',
         },
         {
@@ -64,5 +64,5 @@ export function useTraceAnalytics(traces) {
       endpointCount: endpoints.length,
       formatDuration,
     }
-  }, [traces])
+  }, [recentTraces])
 }

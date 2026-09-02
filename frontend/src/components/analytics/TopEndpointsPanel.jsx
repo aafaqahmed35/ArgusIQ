@@ -11,7 +11,7 @@ function TopEndpointsPanel({
   onEndpointSelect,
   sortField = 'traffic',
   onSortFieldChange,
-  sourceNote = 'Based on loaded traces',
+  sourceNote = 'Based on the bounded recent trace window',
   formatDuration,
 }) {
   const maxCount = Math.max(...endpoints.map((endpoint) => endpoint.count), 1)

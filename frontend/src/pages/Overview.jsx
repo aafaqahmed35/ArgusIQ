@@ -7,7 +7,7 @@ import OverviewRuntimeSummary from '../components/overview/OverviewRuntimeSummar
 import { useSystemHealth } from '../hooks/useSystemHealth'
 import { useTraceAnalytics } from '../hooks/useTraceAnalytics'
 import { useTraces } from '../hooks/useTraces'
-import { fetchHealth } from '../services/traceApi'
+import { fetchHealth, fetchMetrics } from '../services/traceApi'
 import '../styles/dashboard.css'
 
 function formatDuration(value) {
@@ -35,32 +35,36 @@ function getHealthMetricTone(tone) {
 }
 
 function Overview() {
-  const { traces, isLoading, error, websocketStatus, refreshTraces } = useTraces()
-  const analytics = useTraceAnalytics(traces)
-  const systemHealth = useSystemHealth({ traces, analytics, websocketStatus, isLoading, error })
+  const {
+    recentTraces,
+    recentTraceLimit,
+    isLoading,
+    error,
+    websocketStatus,
+    refreshRecentTraces,
+  } = useTraces()
+  const analytics = useTraceAnalytics(recentTraces)
+  const systemHealth = useSystemHealth({ recentTraces, analytics, websocketStatus, isLoading, error })
   const [backendHealth, setBackendHealth] = useState(null)
-  const [isHealthLoading, setIsHealthLoading] = useState(true)
+  const [backendMetrics, setBackendMetrics] = useState(null)
+  const [isBackendSummaryLoading, setIsBackendSummaryLoading] = useState(true)
 
-  const loadBackendHealth = useCallback(async () => {
-    setIsHealthLoading(true)
-    try {
-      const data = await fetchHealth()
-      setBackendHealth(data ?? null)
-    } catch {
-      setBackendHealth(null)
-    } finally {
-      setIsHealthLoading(false)
-    }
+  const loadBackendSummary = useCallback(async () => {
+    setIsBackendSummaryLoading(true)
+    const [healthResult, metricsResult] = await Promise.allSettled([fetchHealth(), fetchMetrics()])
+
+    setBackendHealth(healthResult.status === 'fulfilled' ? healthResult.value ?? null : null)
+    setBackendMetrics(metricsResult.status === 'fulfilled' ? metricsResult.value ?? null : null)
+    setIsBackendSummaryLoading(false)
   }, [])
 
   useEffect(() => {
-    queueMicrotask(loadBackendHealth)
-  }, [loadBackendHealth])
+    queueMicrotask(loadBackendSummary)
+  }, [loadBackendSummary])
 
   const handleRefresh = useCallback(async () => {
-    await refreshTraces()
-    await loadBackendHealth()
-  }, [loadBackendHealth, refreshTraces])
+    await Promise.all([refreshRecentTraces(), loadBackendSummary()])
+  }, [loadBackendSummary, refreshRecentTraces])
 
   const overviewMetrics = useMemo(() => {
     const topEndpoint = analytics.topEndpoints[0]
@@ -68,26 +72,28 @@ function Overview() {
     return [
       {
         label: 'Total Traces',
-        value: traces.length.toLocaleString(),
-        detail: 'Loaded records',
+        value: backendMetrics ? Number(backendMetrics.throughput).toLocaleString() : '—',
+        detail: 'All persisted traces · 30 s cache',
         tone: 'signal',
       },
       {
         label: 'Average Response Time',
-        value: formatDuration(analytics.averageResponseTime),
-        detail: 'Across visible traces',
+        value: formatDuration(backendMetrics?.averageLatencyMs),
+        detail: 'All persisted traces · 30 s cache',
         tone: 'latency',
       },
       {
         label: 'P95 Response Time',
-        value: formatDuration(analytics.p95ResponseTime),
-        detail: '95th percentile latency',
+        value: formatDuration(backendMetrics?.p95LatencyMs),
+        detail: 'All persisted traces · 30 s cache',
         tone: 'latency',
       },
       {
-        label: 'Top Endpoint',
+        label: 'Top Recent Endpoint',
         value: topEndpoint?.endpoint ?? '—',
-        detail: topEndpoint ? `${topEndpoint.count.toLocaleString()} requests` : 'No requests yet',
+        detail: topEndpoint
+          ? `${topEndpoint.count.toLocaleString()} of ${recentTraces.length.toLocaleString()} recent traces`
+          : 'No recent requests yet',
         tone: 'source',
       },
       {
@@ -99,16 +105,16 @@ function Overview() {
         tone: getHealthMetricTone(systemHealth.tone),
       },
     ]
-  }, [analytics, backendHealth, systemHealth, traces.length])
+  }, [analytics, backendHealth, backendMetrics, recentTraces.length, systemHealth])
 
-  const isOverviewLoading = isLoading || isHealthLoading
+  const isOverviewLoading = isLoading || isBackendSummaryLoading
 
   return (
     <div className="overview-workspace">
       <section className="overview-workspace__header" aria-label="Overview header">
         <PageHeader
           title="Overview"
-          subtitle="Executive summary of system health and telemetry."
+          subtitle="Global backend summary with bounded recent operational signals."
           websocketStatus={websocketStatus}
           isLoading={isLoading}
           onRefresh={handleRefresh}
@@ -120,7 +126,11 @@ function Overview() {
       </section>
 
       <section className="overview-workspace__insights" aria-label="Overview insights">
-        <OverviewChart traces={traces} isLoading={isOverviewLoading} />
+        <OverviewChart
+          recentTraces={recentTraces}
+          recentTraceLimit={recentTraceLimit}
+          isLoading={isOverviewLoading}
+        />
         <OverviewRuntimeSummary
           health={systemHealth}
           backendHealth={backendHealth}
@@ -130,7 +140,7 @@ function Overview() {
 
       <section className="overview-workspace__activity" aria-label="Recent activity">
         <ActivityFeed
-          traces={traces}
+          traces={recentTraces}
           isLoading={isLoading}
           limit={5}
           actionHref="/traces"

@@ -6,6 +6,7 @@ import com.argusiq.tracing.dto.SavedSearchResponse;
 import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.dto.TraceSearchCriteria;
 import com.argusiq.tracing.service.SearchService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -28,12 +29,12 @@ public class SearchController {
     }
 
     @GetMapping
-    public PageResponse<TraceResponseDto> search(@ModelAttribute TraceSearchCriteria criteria) {
+    public PageResponse<TraceResponseDto> search(@Valid @ModelAttribute TraceSearchCriteria criteria) {
         return searchService.searchTraces(criteria);
     }
 
     @GetMapping("/traces")
-    public PageResponse<TraceResponseDto> searchTraces(@ModelAttribute TraceSearchCriteria criteria) {
+    public PageResponse<TraceResponseDto> searchTraces(@Valid @ModelAttribute TraceSearchCriteria criteria) {
         return searchService.searchTraces(criteria);
     }
 

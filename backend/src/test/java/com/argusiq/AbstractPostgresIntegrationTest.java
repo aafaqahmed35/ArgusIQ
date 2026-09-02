@@ -26,6 +26,7 @@ public abstract class AbstractPostgresIntegrationTest {
         registry.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.PostgreSQLDialect");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("spring.flyway.locations", () -> "classpath:db/migration,classpath:db/postgresql");
         registry.add("spring.flyway.baseline-on-migrate", () -> "false");
         registry.add("argusiq.security.investigation-username", () -> "postgres-investigator");
         registry.add("argusiq.security.investigation-password", () -> INVESTIGATION_PASSWORD);

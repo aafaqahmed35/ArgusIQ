@@ -57,7 +57,7 @@ function AnalyticsEndpointDetail({ endpoint, totalTraces, formatDuration }) {
           <dd>{contribution}</dd>
         </div>
       </dl>
-      <p className="analytics-endpoint-detail__caption">Metrics computed from loaded trace records</p>
+      <p className="analytics-endpoint-detail__caption">Metrics and contribution computed from the recent trace window</p>
     </section>
   )
 }

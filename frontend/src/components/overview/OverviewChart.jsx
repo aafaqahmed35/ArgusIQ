@@ -41,18 +41,18 @@ function buildVolumeBuckets(traces, bucketCount = 16) {
   }))
 }
 
-function OverviewChart({ traces, isLoading = false }) {
-  const buckets = buildVolumeBuckets(traces)
-  const totalRequests = traces.length
+function OverviewChart({ recentTraces, recentTraceLimit, isLoading = false }) {
+  const buckets = buildVolumeBuckets(recentTraces)
+  const totalRequests = recentTraces.length
 
   return (
     <section className="analytics-panel overview-chart" aria-labelledby="overview-request-volume-title">
       <div className="analytics-panel__header">
         <div>
           <p className="section-kicker">Traffic</p>
-          <h2 id="overview-request-volume-title">Request Volume</h2>
+          <h2 id="overview-request-volume-title">Recent Request Volume</h2>
         </div>
-        <span className="panel-action">{totalRequests.toLocaleString()} loaded</span>
+        <span className="panel-action">{totalRequests.toLocaleString()} recent</span>
       </div>
 
       {isLoading ? (
@@ -64,7 +64,7 @@ function OverviewChart({ traces, isLoading = false }) {
       ) : buckets.length === 0 ? (
         <div className="analytics-empty">
           <strong>No request volume yet</strong>
-          <span>Volume bars appear after traces are loaded.</span>
+          <span>Volume bars appear after recent traces are received.</span>
         </div>
       ) : (
         <div className="overview-chart__body">
@@ -78,7 +78,9 @@ function OverviewChart({ traces, isLoading = false }) {
               />
             ))}
           </div>
-          <p className="overview-chart__caption">Distribution from loaded traces</p>
+          <p className="overview-chart__caption">
+            Distribution across the latest {totalRequests.toLocaleString()} traces (limit {recentTraceLimit})
+          </p>
         </div>
       )}
     </section>

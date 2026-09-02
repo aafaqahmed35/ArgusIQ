@@ -24,6 +24,7 @@ function ServiceGroupsPanel({
   onSortFieldChange,
   totalRequests = 0,
   groupCount = 0,
+  recentTraceLimit = 100,
 }) {
   const rowRefs = useRef([])
 
@@ -61,7 +62,7 @@ function ServiceGroupsPanel({
     }
   }
 
-  const sourceNote = `Based on ${Number(totalRequests).toLocaleString()} loaded traces · ${Number(groupCount).toLocaleString()} service groups`
+  const sourceNote = `Based on ${Number(totalRequests).toLocaleString()} recent traces (limit ${recentTraceLimit}) · ${Number(groupCount).toLocaleString()} URI groups`
 
   return (
     <section
@@ -103,7 +104,7 @@ function ServiceGroupsPanel({
       ) : groups.length === 0 ? (
         <div className="analytics-empty">
           <strong>No service groups yet</strong>
-          <span>Service groups will appear after traces are loaded.</span>
+          <span>URI groups will appear after recent traces are received.</span>
         </div>
       ) : (
         <div className="table-shell service-groups-panel__table-shell">

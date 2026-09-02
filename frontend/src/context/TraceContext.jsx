@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { fetchTraces } from '../services/traceApi'
+import { searchTraces } from '../services/traceApi'
 import { connectTraceWebSocket } from '../websocket/websocketClient'
 import { TraceContext, WEBSOCKET_STATUS, getTraceKey } from './traceContextCore'
 
@@ -18,19 +18,27 @@ function dedupeTraces(traces) {
   })
 }
 
+const RECENT_TRACE_LIMIT = 100
+
 export function TraceProvider({ children }) {
-  const [traces, setTraces] = useState([])
+  const [recentTraces, setRecentTraces] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [websocketStatus, setConnectionStatus] = useState(WEBSOCKET_STATUS.CONNECTING)
+  const [liveTraceSequence, setLiveTraceSequence] = useState(0)
 
-  const loadTraces = useCallback(async () => {
+  const loadRecentTraces = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const data = await fetchTraces()
-      setTraces(Array.isArray(data) ? dedupeTraces(data) : [])
+      const data = await searchTraces({
+        page: 0,
+        size: RECENT_TRACE_LIMIT,
+        sortBy: 'startTime',
+        sortDirection: 'desc',
+      })
+      setRecentTraces(Array.isArray(data?.items) ? dedupeTraces(data.items) : [])
     } catch (requestError) {
       setError(requestError)
     } finally {
@@ -39,14 +47,15 @@ export function TraceProvider({ children }) {
   }, [])
 
   const handleRealtimeTrace = useCallback((trace) => {
-    setTraces((currentTraces) => dedupeTraces([trace, ...currentTraces]))
+    setRecentTraces((currentTraces) => dedupeTraces([trace, ...currentTraces]).slice(0, RECENT_TRACE_LIMIT))
+    setLiveTraceSequence((currentSequence) => currentSequence + 1)
   }, [])
 
   useEffect(() => {
     let isSubscribed = true
 
     const initialLoadTimer = window.setTimeout(() => {
-      loadTraces()
+      loadRecentTraces()
     }, 0)
 
     const disconnect = connectTraceWebSocket({
@@ -65,16 +74,18 @@ export function TraceProvider({ children }) {
       window.clearTimeout(initialLoadTimer)
       disconnect()
     }
-  }, [loadTraces, handleRealtimeTrace])
+  }, [loadRecentTraces, handleRealtimeTrace])
 
   return (
     <TraceContext.Provider
       value={{
-        traces,
+        recentTraces,
+        recentTraceLimit: RECENT_TRACE_LIMIT,
         isLoading,
         error,
         websocketStatus,
-        refreshTraces: loadTraces,
+        liveTraceSequence,
+        refreshRecentTraces: loadRecentTraces,
       }}
     >
       {children}

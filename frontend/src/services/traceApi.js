@@ -11,13 +11,25 @@ const traceClient = axios.create({
   },
 })
 
-export async function fetchTraces() {
-  const response = await traceClient.get('/traces')
-  return response.data
+export function buildTraceSearchParams(criteria = {}) {
+  const params = {}
+
+  Object.entries(criteria).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return
+    }
+
+    params[key] = value
+  })
+
+  return params
 }
 
-export async function fetchSlowTraces() {
-  const response = await traceClient.get('/traces/slow')
+export async function searchTraces(criteria = {}, { signal } = {}) {
+  const response = await traceClient.get('/search/traces', {
+    params: buildTraceSearchParams(criteria),
+    signal,
+  })
   return response.data
 }
 
@@ -34,6 +46,11 @@ export async function fetchTraceCount() {
 
 export async function fetchAverageResponseTime() {
   const response = await traceClient.get('/traces/analytics/average-response-time')
+  return response.data
+}
+
+export async function fetchMetrics() {
+  const response = await traceClient.get('/metrics')
   return response.data
 }
 

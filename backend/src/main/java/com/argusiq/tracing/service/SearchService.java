@@ -25,7 +25,9 @@ import java.util.Set;
 @Service
 public class SearchService {
 
-    private static final Set<String> SORT_COLUMNS = Set.of("startTime", "durationMs", "statusCode", "httpMethod", "requestUri", "serviceName");
+    private static final Set<String> SORT_COLUMNS = Set.of(
+            "startTime", "durationMs", "statusCode", "httpMethod", "requestUri", "serviceName", "traceId"
+    );
 
     private final EntityManager entityManager;
     private final OtlpMapper otlpMapper;
@@ -39,10 +41,15 @@ public class SearchService {
 
     @Transactional(readOnly = true)
     public PageResponse<TraceResponseDto> searchTraces(TraceSearchCriteria criteria) {
+        validate(criteria);
         QueryParts parts = buildQuery(criteria, false);
         TypedQuery<TraceEntity> query = entityManager.createQuery(parts.jpql(), TraceEntity.class);
         parts.parameters().forEach(query::setParameter);
-        query.setFirstResult(criteria.getPage() * criteria.getSize());
+        long offset = (long) criteria.getPage() * criteria.getSize();
+        if (offset > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("page and size produce an unsupported offset");
+        }
+        query.setFirstResult((int) offset);
         query.setMaxResults(criteria.getSize());
 
         QueryParts countParts = buildQuery(criteria, true);
@@ -87,10 +94,12 @@ public class SearchService {
         List<String> clauses = new ArrayList<>();
         Map<String, Object> params = new java.util.LinkedHashMap<>();
 
-        addLike(clauses, params, "t.traceId", "traceId", criteria.getTraceId());
+        addFreeText(clauses, params, criteria.getQuery());
+        addEquals(clauses, params, "t.traceId", "traceId", criteria.getTraceId());
         addLike(clauses, params, "t.requestUri", "endpoint", criteria.getEndpoint());
         addEqualsIgnoreCase(clauses, params, "t.httpMethod", "httpMethod", criteria.getHttpMethod());
         addEqualsIgnoreCase(clauses, params, "t.statusCode", "status", criteria.getStatus());
+        addEqualsIgnoreCase(clauses, params, "t.serviceName", "serviceExact", criteria.getServiceExact());
         addLike(clauses, params, "t.serviceName", "service", criteria.getService());
         addLike(clauses, params, "t.rootSpanName", "operation", criteria.getOperation());
         addLike(clauses, params, "t.businessOperation", "businessOperation", criteria.getBusinessOperation());
@@ -116,7 +125,7 @@ public class SearchService {
             params.put("to", criteria.getTo());
         }
         if (joinSpans) {
-            addLike(clauses, params, "s.spanId", "spanId", criteria.getSpanId());
+            addEquals(clauses, params, "s.spanId", "spanId", criteria.getSpanId());
             addLike(clauses, params, "s.customerId", "customerId", criteria.getCustomerId());
             addLike(clauses, params, "s.accountId", "accountId", criteria.getAccountId());
             addLike(clauses, params, "s.loanId", "loanId", criteria.getLoanId());
@@ -134,11 +143,55 @@ public class SearchService {
             jpql.append(" where ").append(String.join(" and ", clauses));
         }
         if (!count) {
-            String sortBy = SORT_COLUMNS.contains(criteria.getSortBy()) ? criteria.getSortBy() : "startTime";
-            String direction = "asc".equalsIgnoreCase(criteria.getSortDirection()) ? "asc" : "desc";
+            String sortBy = criteria.getSortBy();
+            String direction = criteria.getSortDirection().toLowerCase(Locale.ROOT);
             jpql.append(" order by t.").append(sortBy).append(" ").append(direction);
+            if (!"id".equals(sortBy)) {
+                jpql.append(", t.id ").append(direction);
+            }
         }
         return new QueryParts(jpql.toString(), params);
+    }
+
+    private void validate(TraceSearchCriteria criteria) {
+        if (criteria == null) {
+            throw new IllegalArgumentException("search criteria are required");
+        }
+        if (criteria.getPage() < 0) {
+            throw new IllegalArgumentException("page must be at least 0");
+        }
+        if (criteria.getSize() < 1 || criteria.getSize() > TraceSearchCriteria.MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("size must be between 1 and " + TraceSearchCriteria.MAX_PAGE_SIZE);
+        }
+        if (!SORT_COLUMNS.contains(criteria.getSortBy())) {
+            throw new IllegalArgumentException("unsupported sortBy value");
+        }
+        if (!"asc".equalsIgnoreCase(criteria.getSortDirection())
+                && !"desc".equalsIgnoreCase(criteria.getSortDirection())) {
+            throw new IllegalArgumentException("sortDirection must be asc or desc");
+        }
+        if (!criteria.isDurationRangeValid()) {
+            throw new IllegalArgumentException("minDuration must be less than or equal to maxDuration");
+        }
+        if (!criteria.isTimeRangeValid()) {
+            throw new IllegalArgumentException("from must be less than or equal to to");
+        }
+    }
+
+    private void addFreeText(List<String> clauses, Map<String, Object> params, String value) {
+        if (!hasText(value)) {
+            return;
+        }
+
+        clauses.add("(" + String.join(" or ",
+                "lower(t.traceId) like :query",
+                "lower(t.serviceName) like :query",
+                "lower(t.rootSpanName) like :query",
+                "lower(t.requestUri) like :query",
+                "lower(t.httpMethod) like :query",
+                "lower(t.statusCode) like :query"
+        ) + ")");
+        params.put("query", "%" + value.toLowerCase(Locale.ROOT).trim() + "%");
     }
 
     private boolean hasSpanFilters(TraceSearchCriteria criteria) {
@@ -155,6 +208,13 @@ public class SearchService {
         if (hasText(value)) {
             clauses.add("lower(" + field + ") like :" + param);
             params.put(param, "%" + value.toLowerCase(Locale.ROOT).trim() + "%");
+        }
+    }
+
+    private void addEquals(List<String> clauses, Map<String, Object> params, String field, String param, String value) {
+        if (hasText(value)) {
+            clauses.add(field + " = :" + param);
+            params.put(param, value.trim());
         }
     }
 

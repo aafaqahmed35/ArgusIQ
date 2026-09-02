@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 const SESSION_STORAGE_KEY = 'argusiq-services-limitation-dismissed'
 
-function ServicesLimitationBanner() {
+function ServicesLimitationBanner({ recentTraceLimit }) {
   const [isVisible, setIsVisible] = useState(
     () => sessionStorage.getItem(SESSION_STORAGE_KEY) !== 'true',
   )
@@ -19,7 +19,8 @@ function ServicesLimitationBanner() {
   return (
     <section className="services-limitation-banner" aria-label="Service grouping notice" role="note">
       <p className="services-limitation-banner__message">
-        Services are derived from URI prefixes because the backend currently does not expose service metadata.
+        This recent-activity view groups URI prefixes across at most {recentTraceLimit} traces. It is not a complete
+        service inventory or an authoritative service aggregate.
       </p>
       <button className="services-limitation-banner__dismiss" type="button" onClick={handleDismiss}>
         Dismiss

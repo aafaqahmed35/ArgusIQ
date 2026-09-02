@@ -2034,7 +2034,7 @@
 
 .trace-explorer .trace-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   height: 100%;
 }
@@ -2045,7 +2045,82 @@
 }
 
 .investigation-toolbar--explorer .investigation-toolbar__controls {
-  grid-template-columns: minmax(280px, 1.1fr) minmax(240px, 1fr) minmax(118px, 0.55fr) minmax(144px, 0.55fr);
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.investigation-toolbar--explorer .investigation-control--search {
+  grid-column: span 2;
+}
+
+.trace-query-area {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+}
+
+.trace-live-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(86, 215, 232, 0.3);
+  border-radius: var(--dashboard-radius);
+  color: #c8f7fc;
+  background: rgba(18, 71, 87, 0.36);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trace-live-notice button,
+.trace-pagination button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(143, 165, 192, 0.28);
+  border-radius: 7px;
+  color: #edf3fb;
+  background: rgba(5, 8, 14, 0.82);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.trace-live-notice button:hover,
+.trace-pagination button:hover:not(:disabled) {
+  border-color: rgba(86, 215, 232, 0.48);
+  background: rgba(18, 71, 87, 0.42);
+}
+
+.trace-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(143, 165, 192, 0.18);
+  color: #a7b4c6;
+  background: rgba(8, 12, 20, 0.55);
+  font-size: 12px;
+}
+
+.trace-pagination label,
+.trace-pagination__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-pagination select {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(143, 165, 192, 0.28);
+  border-radius: 7px;
+  color: #edf3fb;
+  background: rgba(5, 8, 14, 0.82);
+}
+
+.trace-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .investigation-control--mode {

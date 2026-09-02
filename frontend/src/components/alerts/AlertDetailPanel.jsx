@@ -80,7 +80,7 @@ function AlertDetailPanel({ alert, onDismiss, onClose }) {
         ) : null}
       </dl>
 
-      <p className="analytics-endpoint-detail__caption">Derived from live signals on loaded trace records</p>
+      <p className="analytics-endpoint-detail__caption">Derived from live signals on the bounded recent trace window</p>
     </section>
   )
 }

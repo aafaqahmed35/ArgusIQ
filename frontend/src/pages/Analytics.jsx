@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/layout/PageHeader'
 import AnalyticsEndpointDetail from '../components/analytics/AnalyticsEndpointDetail'
 import AnalyticsSummaryStrip from '../components/analytics/AnalyticsSummaryStrip'
 import TopEndpointsPanel from '../components/analytics/TopEndpointsPanel'
 import { formatDuration, useTraceAnalytics } from '../hooks/useTraceAnalytics'
 import { useTraces } from '../hooks/useTraces'
+import { fetchMetrics } from '../services/traceApi'
 import '../styles/dashboard.css'
 
 const SORT_FIELD = {
@@ -13,14 +14,35 @@ const SORT_FIELD = {
 }
 
 function Analytics() {
-  const { traces, isLoading, error, refreshTraces } = useTraces()
-  const analytics = useTraceAnalytics(traces)
+  const { recentTraces, recentTraceLimit, isLoading, error, refreshRecentTraces } = useTraces()
+  const analytics = useTraceAnalytics(recentTraces)
   const [selectedEndpoint, setSelectedEndpoint] = useState(null)
   const [sortField, setSortField] = useState(SORT_FIELD.TRAFFIC)
+  const [aggregateMetrics, setAggregateMetrics] = useState(null)
+  const [isAggregateLoading, setIsAggregateLoading] = useState(true)
+  const [aggregateError, setAggregateError] = useState(null)
+
+  const loadAggregateMetrics = useCallback(async () => {
+    setIsAggregateLoading(true)
+    setAggregateError(null)
+
+    try {
+      setAggregateMetrics(await fetchMetrics())
+    } catch (requestError) {
+      setAggregateMetrics(null)
+      setAggregateError(requestError)
+    } finally {
+      setIsAggregateLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    queueMicrotask(loadAggregateMetrics)
+  }, [loadAggregateMetrics])
 
   const handleRefresh = useCallback(async () => {
-    await refreshTraces()
-  }, [refreshTraces])
+    await Promise.all([refreshRecentTraces(), loadAggregateMetrics()])
+  }, [loadAggregateMetrics, refreshRecentTraces])
 
   const sortedEndpoints = useMemo(() => {
     const endpoints = [...analytics.endpoints]
@@ -39,48 +61,48 @@ function Analytics() {
     )
   }, [analytics.endpoints, sortField])
 
-  const totalTraces = traces.length
-  const averageResponseTime = analytics.averageResponseTime
+  const recentTraceCount = recentTraces.length
+  const aggregateDetail = aggregateError ? 'Backend aggregate unavailable' : 'All persisted traces · 30 s cache'
 
   const summaryItems = [
     {
       label: 'Total Traces',
-      value: Number(totalTraces).toLocaleString(),
-      detail: 'From loaded traces',
+      value: aggregateMetrics ? Number(aggregateMetrics.throughput).toLocaleString() : '—',
+      detail: aggregateDetail,
     },
     {
       label: 'Average RT',
-      value: formatDuration(averageResponseTime),
-      detail: 'Computed from loaded traces',
+      value: formatDuration(aggregateMetrics?.averageLatencyMs),
+      detail: aggregateDetail,
     },
     {
       label: 'P95',
-      value: formatDuration(analytics.p95ResponseTime),
-      detail: 'Computed from loaded traces',
+      value: formatDuration(aggregateMetrics?.p95LatencyMs),
+      detail: aggregateDetail,
     },
     {
       label: 'Endpoints',
-      value: analytics.endpointCount.toLocaleString(),
-      detail: 'Distinct paths in loaded traces',
+      value: aggregateMetrics ? Number(aggregateMetrics.uniqueEndpoints).toLocaleString() : '—',
+      detail: aggregateDetail,
     },
   ]
 
-  const sourceNote = `Based on ${Number(totalTraces).toLocaleString()} loaded traces`
+  const sourceNote = `Recent endpoint sample: latest ${recentTraceCount.toLocaleString()} traces (limit ${recentTraceLimit})`
 
   return (
     <div className="analytics-workspace">
       <section className="analytics-workspace__header" aria-label="Analytics header">
         <PageHeader
           title="Analytics"
-          subtitle="Identify latency hotspots and traffic concentration across endpoints."
-          isLoading={isLoading}
+          subtitle="Global summaries with a bounded recent endpoint drill-down."
+          isLoading={isLoading || isAggregateLoading}
           onRefresh={handleRefresh}
           showConnectionStatus={false}
-          statusNote="Snapshot from loaded traces"
+          statusNote="Global aggregate + recent trace window"
         />
       </section>
 
-      <AnalyticsSummaryStrip items={summaryItems} isLoading={isLoading} />
+      <AnalyticsSummaryStrip items={summaryItems} isLoading={isAggregateLoading} />
 
       <section className="analytics-workspace__body" aria-label="Endpoint analytics">
         <TopEndpointsPanel
@@ -96,7 +118,7 @@ function Analytics() {
         />
         <AnalyticsEndpointDetail
           endpoint={selectedEndpoint}
-          totalTraces={totalTraces}
+          totalTraces={recentTraceCount}
           formatDuration={formatDuration}
         />
       </section>

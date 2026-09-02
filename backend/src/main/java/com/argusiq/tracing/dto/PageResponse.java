@@ -1,29 +1,31 @@
 package com.argusiq.tracing.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.List;
 
 public class PageResponse<T> {
 
-    private final List<T> content;
+    private final List<T> items;
     private final int page;
     private final int size;
-    private final long totalElements;
+    private final long totalItems;
     private final int totalPages;
-    private final boolean first;
-    private final boolean last;
+    private final boolean hasNext;
+    private final boolean hasPrevious;
 
-    public PageResponse(List<T> content, int page, int size, long totalElements) {
-        this.content = content != null ? content : List.of();
+    public PageResponse(List<T> items, int page, int size, long totalItems) {
+        this.items = items != null ? items : List.of();
         this.page = page;
         this.size = size;
-        this.totalElements = totalElements;
-        this.totalPages = size > 0 ? (int) Math.ceil((double) totalElements / size) : 0;
-        this.first = page <= 0;
-        this.last = totalPages == 0 || page >= totalPages - 1;
+        this.totalItems = totalItems;
+        this.totalPages = size > 0 ? (int) Math.ceil((double) totalItems / size) : 0;
+        this.hasNext = page + 1 < totalPages;
+        this.hasPrevious = page > 0;
     }
 
-    public List<T> getContent() {
-        return content;
+    public List<T> getItems() {
+        return items;
     }
 
     public int getPage() {
@@ -34,19 +36,29 @@ public class PageResponse<T> {
         return size;
     }
 
-    public long getTotalElements() {
-        return totalElements;
+    public long getTotalItems() {
+        return totalItems;
     }
 
     public int getTotalPages() {
         return totalPages;
     }
 
-    public boolean isFirst() {
-        return first;
+    public boolean isHasNext() {
+        return hasNext;
     }
 
-    public boolean isLast() {
-        return last;
+    public boolean isHasPrevious() {
+        return hasPrevious;
+    }
+
+    @JsonIgnore
+    public List<T> getContent() {
+        return items;
+    }
+
+    @JsonIgnore
+    public long getTotalElements() {
+        return totalItems;
     }
 }

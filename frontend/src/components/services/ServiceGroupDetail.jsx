@@ -9,7 +9,7 @@ function formatTrafficShare(value) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
 }
 
-function ServiceGroupDetail({ group, totalRequests }) {
+function ServiceGroupDetail({ group, totalRequests, recentTraceLimit }) {
   if (!group) {
     return (
       <section className="analytics-panel service-group-detail" aria-labelledby="service-group-detail-title">
@@ -76,7 +76,7 @@ function ServiceGroupDetail({ group, totalRequests }) {
       <div className="service-group-detail__endpoints">
         <h3>Endpoints in this group</h3>
         {group.endpoints.length === 0 ? (
-          <p className="service-group-detail__endpoints-empty">No endpoints in loaded traces for this group.</p>
+          <p className="service-group-detail__endpoints-empty">No endpoints in the recent trace window for this group.</p>
         ) : (
           <ol className="service-group-detail__endpoint-list">
             {group.endpoints.map((endpoint) => (
@@ -94,7 +94,7 @@ function ServiceGroupDetail({ group, totalRequests }) {
       </div>
 
       <p className="analytics-endpoint-detail__caption">
-        Metrics computed from {Number(totalRequests).toLocaleString()} loaded trace records
+        Metrics computed from {Number(totalRequests).toLocaleString()} recent trace records (limit {recentTraceLimit})
       </p>
     </section>
   )

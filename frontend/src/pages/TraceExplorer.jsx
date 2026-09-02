@@ -1,171 +1,310 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/layout/PageHeader'
 import InvestigationToolbar from '../components/traces/InvestigationToolbar'
 import TraceDetailsDrawer from '../components/traces/TraceDetailsDrawer'
 import TracePanel from '../components/traces/TracePanel'
-import { useTraceFilters } from '../hooks/useTraceFilters'
 import { getTraceKey, useTraces } from '../hooks/useTraces'
-import { fetchSlowTraces } from '../services/traceApi'
+import { searchTraces } from '../services/traceApi'
 import '../styles/dashboard.css'
 
-const INVESTIGATION_MODE = {
-  ALL: 'all',
-  SLOW: 'slow',
+const DEFAULT_QUERY = {
+  query: '',
+  traceId: '',
+  spanId: '',
+  service: '',
+  endpoint: '',
+  httpMethod: '',
+  status: '',
+  latency: '',
+  from: '',
+  to: '',
+  page: 0,
+  size: 25,
+  sortBy: 'startTime',
+  sortDirection: 'desc',
 }
 
-const HIGHLIGHT_DURATION_MS = 2000
+const SUPPORTED_SORT_FIELDS = new Set([
+  'startTime',
+  'durationMs',
+  'serviceName',
+  'statusCode',
+  'httpMethod',
+  'requestUri',
+  'traceId',
+])
+const SUPPORTED_PAGE_SIZES = new Set([10, 25, 50, 100])
 
-function dedupeTraces(traces) {
-  const seenTraceKeys = new Set()
+function parseInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isInteger(parsed) ? parsed : fallback
+}
 
-  return traces.filter((trace) => {
-    const traceKey = getTraceKey(trace)
+function readQuery(searchParams) {
+  const page = Math.max(0, parseInteger(searchParams.get('page'), DEFAULT_QUERY.page))
+  const requestedSize = parseInteger(searchParams.get('size'), DEFAULT_QUERY.size)
+  const size = SUPPORTED_PAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_QUERY.size
+  const requestedSort = searchParams.get('sortBy')
+  const sortBy = SUPPORTED_SORT_FIELDS.has(requestedSort) ? requestedSort : DEFAULT_QUERY.sortBy
+  const sortDirection = searchParams.get('sortDirection')?.toLowerCase() === 'asc' ? 'asc' : 'desc'
 
-    if (seenTraceKeys.has(traceKey)) {
-      return false
-    }
+  return {
+    query: searchParams.get('query') ?? '',
+    traceId: searchParams.get('traceId') ?? '',
+    spanId: searchParams.get('spanId') ?? '',
+    service: searchParams.get('service') ?? '',
+    endpoint: searchParams.get('endpoint') ?? '',
+    httpMethod: searchParams.get('httpMethod') ?? '',
+    status: searchParams.get('status') ?? '',
+    latency: searchParams.get('latency') ?? '',
+    from: searchParams.get('from') ?? '',
+    to: searchParams.get('to') ?? '',
+    page,
+    size,
+    sortBy,
+    sortDirection,
+  }
+}
 
-    seenTraceKeys.add(traceKey)
-    return true
-  })
+function buildApiCriteria(query) {
+  const criteria = {
+    query: query.query.trim(),
+    traceId: query.traceId.trim(),
+    spanId: query.spanId.trim(),
+    serviceExact: query.service.trim(),
+    endpoint: query.endpoint.trim(),
+    httpMethod: query.httpMethod,
+    status: query.status,
+    from: query.from,
+    to: query.to,
+    page: query.page,
+    size: query.size,
+    sortBy: query.sortBy,
+    sortDirection: query.sortDirection,
+  }
+
+  if (query.latency === 'fast') {
+    criteria.maxDuration = 99
+  } else if (query.latency === 'normal') {
+    criteria.minDuration = 100
+    criteria.maxDuration = 499
+  } else if (query.latency === 'slow') {
+    criteria.minDuration = 500
+    criteria.maxDuration = 999
+  } else if (query.latency === 'very-slow') {
+    criteria.minDuration = 1000
+  }
+
+  return criteria
+}
+
+function countActiveFilters(query) {
+  return [
+    query.query,
+    query.traceId,
+    query.spanId,
+    query.service,
+    query.endpoint,
+    query.httpMethod,
+    query.status,
+    query.latency,
+    query.from,
+    query.to,
+  ].filter(Boolean).length
 }
 
 function TraceExplorer() {
-  const { traces, isLoading, error, websocketStatus, refreshTraces } = useTraces()
-  const [investigationMode, setInvestigationMode] = useState(INVESTIGATION_MODE.ALL)
-  const [slowTraces, setSlowTraces] = useState([])
-  const [isSlowLoading, setIsSlowLoading] = useState(false)
-  const [slowError, setSlowError] = useState(null)
+  const { websocketStatus, liveTraceSequence } = useTraces()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const query = useMemo(() => readQuery(searchParams), [searchParams])
+  const [searchInput, setSearchInput] = useState({ source: query.query, value: query.query })
+  const searchDraft = searchInput.source === query.query ? searchInput.value : query.query
+  const [result, setResult] = useState({
+    items: [],
+    page: query.page,
+    size: query.size,
+    totalItems: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+  })
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [selectedTrace, setSelectedTrace] = useState(null)
-  const [highlightedTraceKeys, setHighlightedTraceKeys] = useState([])
-  const previousTraceKeysRef = useRef(new Set())
-
-  const activeTraces = investigationMode === INVESTIGATION_MODE.ALL ? traces : slowTraces
-  const activeIsLoading = investigationMode === INVESTIGATION_MODE.ALL ? isLoading : isSlowLoading
-  const activeError = investigationMode === INVESTIGATION_MODE.ALL ? error : slowError
-
-  const { filteredTraces, filters, updateFilter, clearFilters, activeFilterCount } = useTraceFilters(activeTraces)
-
-  const loadSlowTraces = useCallback(async () => {
-    setIsSlowLoading(true)
-    setSlowError(null)
-
-    try {
-      const data = await fetchSlowTraces()
-      setSlowTraces(Array.isArray(data) ? dedupeTraces(data) : [])
-    } catch (requestError) {
-      setSlowError(requestError)
-    } finally {
-      setIsSlowLoading(false)
-    }
-  }, [])
+  const [refreshSequence, setRefreshSequence] = useState(0)
+  const [acknowledgedLiveSequence, setAcknowledgedLiveSequence] = useState(liveTraceSequence)
+  const requestSequenceRef = useRef(0)
+  const liveTraceSequenceRef = useRef(liveTraceSequence)
 
   useEffect(() => {
-    if (investigationMode === INVESTIGATION_MODE.SLOW) {
-      queueMicrotask(loadSlowTraces)
-    }
-  }, [investigationMode, loadSlowTraces])
+    liveTraceSequenceRef.current = liveTraceSequence
+  }, [liveTraceSequence])
+
+  const updateQuery = useCallback(
+    (patch, { resetPage = true } = {}) => {
+      setSelectedTrace(null)
+      setSearchParams(
+        (currentParams) => {
+          const nextParams = new URLSearchParams(currentParams)
+
+          Object.entries(patch).forEach(([key, value]) => {
+            const defaultValue = DEFAULT_QUERY[key]
+            if (value === '' || value === null || value === undefined || value === defaultValue) {
+              nextParams.delete(key)
+            } else {
+              nextParams.set(key, String(value))
+            }
+          })
+
+          if (resetPage && !Object.hasOwn(patch, 'page')) {
+            nextParams.delete('page')
+          }
+
+          return nextParams
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
 
   useEffect(() => {
-    if (investigationMode !== INVESTIGATION_MODE.ALL) {
-      previousTraceKeysRef.current = new Set(traces.map(getTraceKey))
+    if (searchDraft === query.query) {
       return undefined
     }
 
-    const currentTraceKeys = traces.map(getTraceKey)
-    const currentTraceKeySet = new Set(currentTraceKeys)
-    const newTraceKeys = currentTraceKeys.filter((traceKey) => !previousTraceKeysRef.current.has(traceKey))
+    const debounceTimer = window.setTimeout(() => {
+      updateQuery({ query: searchDraft })
+    }, 300)
 
-    if (previousTraceKeysRef.current.size > 0 && newTraceKeys.length > 0) {
-      setHighlightedTraceKeys(newTraceKeys)
+    return () => window.clearTimeout(debounceTimer)
+  }, [query.query, searchDraft, updateQuery])
 
-      const timeoutId = window.setTimeout(() => {
-        setHighlightedTraceKeys([])
-      }, HIGHLIGHT_DURATION_MS)
+  const apiCriteria = useMemo(() => buildApiCriteria(query), [query])
 
-      previousTraceKeysRef.current = currentTraceKeySet
+  useEffect(() => {
+    const controller = new AbortController()
+    const requestSequence = ++requestSequenceRef.current
+    const liveSequenceAtRequestStart = liveTraceSequenceRef.current
 
-      return () => {
-        window.clearTimeout(timeoutId)
+    queueMicrotask(() => {
+      if (controller.signal.aborted) {
+        return
       }
-    }
 
-    previousTraceKeysRef.current = currentTraceKeySet
-    return undefined
-  }, [investigationMode, traces])
+      setIsLoading(true)
+      setError(null)
+      setResult((currentResult) => ({
+        ...currentResult,
+        items: [],
+        page: apiCriteria.page,
+        size: apiCriteria.size,
+        totalItems: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: apiCriteria.page > 0,
+      }))
 
-  const visibleSelectedTrace = useMemo(() => {
-    if (!selectedTrace) {
-      return null
-    }
+      searchTraces(apiCriteria, { signal: controller.signal })
+        .then((pageResult) => {
+          if (requestSequence !== requestSequenceRef.current) {
+            return
+          }
 
-    return filteredTraces.some((trace) => getTraceKey(trace) === getTraceKey(selectedTrace)) ? selectedTrace : null
-  }, [filteredTraces, selectedTrace])
+          const items = Array.isArray(pageResult?.items) ? pageResult.items : []
+          setResult({
+            items,
+            page: Number(pageResult?.page ?? apiCriteria.page),
+            size: Number(pageResult?.size ?? apiCriteria.size),
+            totalItems: Number(pageResult?.totalItems ?? 0),
+            totalPages: Number(pageResult?.totalPages ?? 0),
+            hasNext: Boolean(pageResult?.hasNext),
+            hasPrevious: Boolean(pageResult?.hasPrevious),
+          })
+          setSelectedTrace((currentTrace) => {
+            if (!currentTrace) return null
+            return items.some((trace) => getTraceKey(trace) === getTraceKey(currentTrace)) ? currentTrace : null
+          })
+          setAcknowledgedLiveSequence(liveSequenceAtRequestStart)
+        })
+        .catch((requestError) => {
+          if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) {
+            return
+          }
+          setError(requestError)
+        })
+        .finally(() => {
+          if (requestSequence === requestSequenceRef.current) {
+            setIsLoading(false)
+          }
+        })
+    })
 
-  const handleRefresh = useCallback(async () => {
-    if (investigationMode === INVESTIGATION_MODE.ALL) {
-      await refreshTraces()
-      return
-    }
+    return () => controller.abort()
+  }, [apiCriteria, refreshSequence])
 
-    await loadSlowTraces()
-  }, [investigationMode, loadSlowTraces, refreshTraces])
-
-  const handleInvestigationModeChange = useCallback((nextMode) => {
-    setInvestigationMode(nextMode)
+  const clearFilters = useCallback(() => {
+    setSearchInput({ source: '', value: '' })
     setSelectedTrace(null)
+    setSearchParams({}, { replace: true })
+  }, [setSearchParams])
+
+  const refresh = useCallback(() => {
+    setRefreshSequence((currentSequence) => currentSequence + 1)
   }, [])
 
-  const sourceLabel =
-    investigationMode === INVESTIGATION_MODE.SLOW
-      ? 'Showing slow traces from GET /api/v1/traces/slow'
-      : 'Showing all loaded traces from GET /api/v1/traces'
-
-  const emptyTitle =
-    investigationMode === INVESTIGATION_MODE.SLOW ? 'No slow traces returned' : 'No traces available'
-
-  const emptyMessage =
-    investigationMode === INVESTIGATION_MODE.SLOW
-      ? 'The slow traces endpoint did not return any records.'
-      : 'Trace records will appear here as soon as the frontend receives telemetry.'
+  const hasNewTraces = liveTraceSequence > acknowledgedLiveSequence
+  const activeFilterCount = countActiveFilters(query)
 
   return (
     <div className="trace-explorer">
       <section className="trace-explorer__header" aria-label="Trace Explorer header">
         <PageHeader
           title="Trace Explorer"
-          subtitle="Find traces, inspect requests, and understand system behavior in real time."
+          subtitle="Find traces, inspect requests, and understand system behavior with bounded server-side queries."
           websocketStatus={websocketStatus}
-          isLoading={activeIsLoading}
-          onRefresh={handleRefresh}
+          isLoading={isLoading}
+          onRefresh={refresh}
         />
       </section>
 
-      <InvestigationToolbar
-        filters={filters}
-        updateFilter={updateFilter}
-        clearFilters={clearFilters}
-        activeFilterCount={activeFilterCount}
-        investigationMode={investigationMode}
-        onInvestigationModeChange={handleInvestigationModeChange}
-      />
+      <div className="trace-query-area">
+        {hasNewTraces ? (
+          <div className="trace-live-notice" role="status">
+            <span>New trace data is available. The current page has not been changed.</span>
+            <button type="button" onClick={refresh}>Refresh results</button>
+          </div>
+        ) : null}
+
+        <InvestigationToolbar
+          query={query}
+          searchDraft={searchDraft}
+          onSearchDraftChange={(value) => setSearchInput({ source: query.query, value })}
+          updateQuery={updateQuery}
+          clearFilters={clearFilters}
+          activeFilterCount={activeFilterCount}
+        />
+      </div>
 
       <section className="trace-explorer__workspace trace-workspace" aria-label="Trace investigation workspace">
         <TracePanel
-          traces={filteredTraces}
-          isLoading={activeIsLoading}
-          error={activeError}
+          traces={result.items}
+          isLoading={isLoading}
+          error={error}
           onTraceSelect={setSelectedTrace}
           activeFilterCount={activeFilterCount}
           onClearFilters={clearFilters}
-          selectedTrace={visibleSelectedTrace}
-          highlightedTraceKeys={highlightedTraceKeys}
-          sourceLabel={sourceLabel}
-          emptyTitle={emptyTitle}
-          emptyMessage={emptyMessage}
+          selectedTrace={selectedTrace}
+          sourceLabel="Bounded results from GET /api/v1/search/traces"
+          emptyTitle="No traces matched"
+          emptyMessage="Broaden the investigation criteria or wait for new telemetry."
+          pagination={result}
+          onPageChange={(page) => updateQuery({ page }, { resetPage: false })}
+          onPageSizeChange={(size) => updateQuery({ size, page: 0 }, { resetPage: false })}
         />
         <TraceDetailsDrawer
-          trace={visibleSelectedTrace}
+          trace={selectedTrace}
           onClose={() => setSelectedTrace(null)}
           variant="panel"
         />

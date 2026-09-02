@@ -100,13 +100,13 @@ function sortAlerts(alerts) {
   })
 }
 
-export function buildDerivedAlerts({ traces, analytics, websocketStatus, isLoading, error }) {
+export function buildDerivedAlerts({ recentTraces, analytics, websocketStatus, isLoading, error }) {
   if (isLoading) {
     return []
   }
 
   const alerts = []
-  const slowTraces = traces.filter((trace) => {
+  const slowTraces = recentTraces.filter((trace) => {
     const durationMs = getDurationMs(trace)
     return durationMs !== null && durationMs >= ALERT_THRESHOLDS.slowTraceMs
   })
@@ -118,7 +118,7 @@ export function buildDerivedAlerts({ traces, analytics, websocketStatus, isLoadi
         severity: ALERT_SEVERITY.CRITICAL,
         title: 'Backend trace fetch failed',
         description: 'The frontend could not load traces from the REST API.',
-        source: 'GET /api/v1/traces',
+        source: 'GET /api/v1/search/traces (recent window)',
         kind: 'condition',
         detectedAt: null,
         evidence: null,
@@ -143,14 +143,14 @@ export function buildDerivedAlerts({ traces, analytics, websocketStatus, isLoadi
     )
   }
 
-  if (!error && traces.length === 0) {
+  if (!error && recentTraces.length === 0) {
     alerts.push(
       createAlert({
         id: CONDITION_ALERT_IDS.NO_TRACES_LOADED,
         severity: ALERT_SEVERITY.WARNING,
-        title: 'No traces loaded',
-        description: 'The frontend has not received any trace records yet.',
-        source: 'Loaded trace records',
+        title: 'No recent traces',
+        description: 'The bounded recent trace window is empty.',
+        source: 'Recent trace window',
         kind: 'condition',
         detectedAt: null,
         evidence: null,
@@ -165,14 +165,14 @@ export function buildDerivedAlerts({ traces, analytics, websocketStatus, isLoadi
     averageResponseTime !== null && averageResponseTime >= ALERT_THRESHOLDS.elevatedAverageMs
   const elevatedP95 = p95ResponseTime !== null && p95ResponseTime >= ALERT_THRESHOLDS.elevatedP95Ms
 
-  if (!error && traces.length > 0 && (elevatedAverage || elevatedP95)) {
+  if (!error && recentTraces.length > 0 && (elevatedAverage || elevatedP95)) {
     alerts.push(
       createAlert({
         id: CONDITION_ALERT_IDS.ELEVATED_LATENCY,
         severity: ALERT_SEVERITY.WARNING,
         title: 'Elevated latency detected',
         description: `Average ${formatDuration(averageResponseTime)} · P95 ${formatDuration(p95ResponseTime)}`,
-        source: 'Computed from loaded traces',
+        source: 'Computed from recent trace window',
         kind: 'condition',
         detectedAt: null,
         evidence: {
@@ -190,8 +190,8 @@ export function buildDerivedAlerts({ traces, analytics, websocketStatus, isLoadi
         id: CONDITION_ALERT_IDS.SLOW_TRACES,
         severity: ALERT_SEVERITY.WARNING,
         title: 'Slow traces detected',
-        description: `${slowTraces.length.toLocaleString()} loaded traces exceed ${ALERT_THRESHOLDS.slowTraceMs.toLocaleString()} ms`,
-        source: 'Computed from loaded traces',
+        description: `${slowTraces.length.toLocaleString()} recent traces exceed ${ALERT_THRESHOLDS.slowTraceMs.toLocaleString()} ms`,
+        source: 'Computed from recent trace window',
         kind: 'condition',
         detectedAt: null,
         evidence: { slowTraceCount: slowTraces.length },
@@ -231,7 +231,7 @@ export function buildDerivedAlerts({ traces, analytics, websocketStatus, isLoadi
           id: `slow-trace-${traceIdentity}`,
           severity: ALERT_SEVERITY.WARNING,
           title: `Slow trace · ${path}`,
-          description: `${formatDuration(durationMs)} response time on a loaded trace record.`,
+          description: `${formatDuration(durationMs)} response time on a recent trace record.`,
           source: 'Trace timestamp',
           kind: 'event',
           detectedAt,

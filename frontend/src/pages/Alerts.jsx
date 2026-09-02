@@ -21,21 +21,28 @@ function readDismissedAlertIds() {
 }
 
 function Alerts() {
-  const { traces, isLoading, error, websocketStatus, refreshTraces } = useTraces()
-  const analytics = useTraceAnalytics(traces)
+  const {
+    recentTraces,
+    recentTraceLimit,
+    isLoading,
+    error,
+    websocketStatus,
+    refreshRecentTraces,
+  } = useTraces()
+  const analytics = useTraceAnalytics(recentTraces)
   const [selectedAlertId, setSelectedAlertId] = useState(null)
   const [dismissedAlertIds, setDismissedAlertIds] = useState(readDismissedAlertIds)
 
   const derivedAlerts = useMemo(
     () =>
       buildDerivedAlerts({
-        traces,
+        recentTraces,
         analytics,
         websocketStatus,
         isLoading,
         error,
       }),
-    [analytics, error, isLoading, traces, websocketStatus],
+    [analytics, error, isLoading, recentTraces, websocketStatus],
   )
 
   const visibleAlerts = useMemo(
@@ -52,8 +59,8 @@ function Alerts() {
   }, [selectedAlertId, visibleAlerts])
 
   const handleRefresh = useCallback(async () => {
-    await refreshTraces()
-  }, [refreshTraces])
+    await refreshRecentTraces()
+  }, [refreshRecentTraces])
 
   const handleAlertSelect = useCallback((alert) => {
     setSelectedAlertId(alert.id)
@@ -81,16 +88,16 @@ function Alerts() {
       <section className="alerts-workspace__header" aria-label="Alerts header">
         <PageHeader
           title="Alerts"
-          subtitle="Derived signals that may require investigation."
+          subtitle="Derived signals from connection state and the bounded recent trace window."
           websocketStatus={websocketStatus}
           isLoading={isLoading}
           onRefresh={handleRefresh}
           showConnectionStatus
-          statusNote="Derived from live signals"
+          statusNote={`Live signals · latest ${recentTraces.length.toLocaleString()} traces`}
         />
       </section>
 
-      <DerivedAlertsBanner />
+      <DerivedAlertsBanner recentTraceLimit={recentTraceLimit} />
 
       <AlertTimeline
         alerts={visibleAlerts}
