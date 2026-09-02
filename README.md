@@ -69,6 +69,66 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
+On a fresh PostgreSQL database, Flyway applies the migrations in
+`backend/src/main/resources/db/migration` before JPA starts. Hibernate runs with
+`ddl-auto=validate`; it no longer creates, updates, or repairs application tables.
+Normal local startup uses `ARGUSIQ_DB_URL`, `ARGUSIQ_DB_USERNAME`, and
+`ARGUSIQ_DB_PASSWORD` from the configuration table above.
+
+#### Existing databases created by Hibernate
+
+Flyway automatic baselining is deliberately disabled. An existing non-empty
+database without `flyway_schema_history` will fail startup instead of being
+silently claimed or modified. Before adopting Flyway for such a database:
+
+1. Back up the database and stop all writers.
+2. Compare its complete schema with
+   `backend/src/main/resources/db/migration/V1__initial_argusiq_schema.sql`.
+3. Audit identity conflicts and span ownership without changing data:
+
+   ```sql
+   SELECT trace_id, count(*)
+   FROM traces
+   GROUP BY trace_id
+   HAVING count(*) > 1;
+
+   SELECT trace_id, span_id, count(*)
+   FROM spans
+   GROUP BY trace_id, span_id
+   HAVING count(*) > 1;
+
+   SELECT s.id, s.trace_id, s.trace_entity_id, t.trace_id AS owner_trace_id
+   FROM spans s
+   LEFT JOIN traces t ON t.id = s.trace_entity_id
+   WHERE s.trace_entity_id IS NULL
+      OR t.id IS NULL
+      OR s.trace_id <> t.trace_id;
+   ```
+
+4. If any query returns rows, decide the canonical records outside the migration.
+   The migration never deletes or deduplicates telemetry.
+5. Only after the schema and data have been audited, perform a one-time Flyway
+   baseline at version `1` (using the Flyway CLI or temporary
+   `SPRING_FLYWAY_BASELINE_ON_MIGRATE=true` and
+   `SPRING_FLYWAY_BASELINE_VERSION=1` for one controlled startup). Remove those
+   temporary settings immediately afterward. Hibernate validation must then pass.
+
+#### Database tests
+
+Fast integration tests retain H2 in PostgreSQL compatibility mode for semantic
+regression coverage, but Flyway creates their schema and Hibernate validates it.
+PostgreSQL locking, uniqueness, rollback, and concurrent OTLP behavior are covered
+by `PostgresPersistenceIntegrationTest`, which starts and removes PostgreSQL
+automatically through Testcontainers. Docker Desktop or another
+Testcontainers-compatible Docker runtime must be running; no database credentials
+are required in tracked test configuration.
+
+```bash
+cd backend
+JAVA_HOME=/path/to/jdk-21 ./mvnw -Dtest=PostgresPersistenceIntegrationTest test
+JAVA_HOME=/path/to/jdk-21 ./mvnw test
+```
+
 ### Frontend
 
 ```bash
