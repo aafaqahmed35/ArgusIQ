@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class OtlpTraceMergeService {
@@ -96,12 +97,21 @@ public class OtlpTraceMergeService {
 
         boolean incomingDefinesRoot = rootSpan.getSpanId().equals(incomingTrace.getRootSpanId());
         boolean previousRootStillCanonical = rootSpan.getSpanId().equals(previousRootSpanId);
-        String requestUri = incomingDefinesRoot
-                ? incomingTrace.getRequestUri()
-                : previousRootStillCanonical ? trace.getRequestUri() : rootSpan.getName();
-        String businessOperation = incomingDefinesRoot
-                ? incomingTrace.getBusinessOperation()
-                : previousRootStillCanonical ? trace.getBusinessOperation() : rootSpan.getName();
+        boolean canonicalRootChanged = !Objects.equals(rootSpan.getSpanId(), previousRootSpanId);
+        String requestUri = rootSummaryValue(
+                trace.getRequestUri(),
+                incomingTrace.getRequestUri(),
+                rootSpan.getName(),
+                incomingDefinesRoot,
+                previousRootStillCanonical
+        );
+        String businessOperation = rootSummaryValue(
+                trace.getBusinessOperation(),
+                incomingTrace.getBusinessOperation(),
+                rootSpan.getName(),
+                incomingDefinesRoot,
+                previousRootStillCanonical
+        );
 
         trace.setServiceName(rootSpan.getServiceName());
         trace.setRootSpanName(rootSpan.getName());
@@ -121,6 +131,59 @@ public class OtlpTraceMergeService {
         trace.setCriticalPathDurationMs(longestSpanMs);
         trace.setTimelineSummary(spans.size() + " spans across " + serviceCount(spans) + " services in " + durationMs + "ms");
         trace.setEvidenceGraphId("trace:" + trace.getTraceId());
+        mergeResourceMetadata(trace, incomingTrace, rootSpan, incomingDefinesRoot, canonicalRootChanged);
+    }
+
+    private void mergeResourceMetadata(
+            TraceEntity trace,
+            TraceEntity incomingTrace,
+            SpanEntity rootSpan,
+            boolean incomingDefinesRoot,
+            boolean canonicalRootChanged
+    ) {
+        boolean sameCanonicalService = Objects.equals(rootSpan.getServiceName(), incomingTrace.getServiceName());
+        if (!incomingDefinesRoot && !sameCanonicalService) {
+            return;
+        }
+
+        if (canonicalRootChanged && incomingDefinesRoot) {
+            trace.setEnvironment(preferObserved(incomingTrace.getEnvironment(), trace.getEnvironment()));
+            trace.setServiceVersion(preferObserved(incomingTrace.getServiceVersion(), trace.getServiceVersion()));
+            trace.setSdkLanguage(preferObserved(incomingTrace.getSdkLanguage(), trace.getSdkLanguage()));
+            return;
+        }
+
+        trace.setEnvironment(enrichMissing(trace.getEnvironment(), incomingTrace.getEnvironment()));
+        trace.setServiceVersion(enrichMissing(trace.getServiceVersion(), incomingTrace.getServiceVersion()));
+        trace.setSdkLanguage(enrichMissing(trace.getSdkLanguage(), incomingTrace.getSdkLanguage()));
+    }
+
+    private String rootSummaryValue(
+            String existing,
+            String incoming,
+            String rootFallback,
+            boolean incomingDefinesRoot,
+            boolean previousRootStillCanonical
+    ) {
+        if (incomingDefinesRoot && isObserved(incoming)) {
+            return incoming.trim();
+        }
+        if (previousRootStillCanonical && isObserved(existing)) {
+            return existing;
+        }
+        return rootFallback;
+    }
+
+    private String enrichMissing(String existing, String incoming) {
+        return isObserved(existing) ? existing : preferObserved(incoming, null);
+    }
+
+    private String preferObserved(String preferred, String fallback) {
+        return isObserved(preferred) ? preferred.trim() : fallback;
+    }
+
+    private boolean isObserved(String value) {
+        return value != null && !value.isBlank();
     }
 
     private int rootRank(SpanEntity span) {

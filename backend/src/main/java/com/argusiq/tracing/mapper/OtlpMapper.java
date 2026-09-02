@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +34,7 @@ public class OtlpMapper {
 
     public LocalDateTime nanoToLocalDateTime(long nanoTime) {
         if (nanoTime <= 0) {
-            return LocalDateTime.now(ZoneOffset.UTC);
+            throw new IllegalArgumentException("OTLP timestamp must be a positive Unix nanosecond value");
         }
         long seconds = nanoTime / 1_000_000_000L;
         int nanos = (int) (nanoTime % 1_000_000_000L);
@@ -195,16 +196,25 @@ public class OtlpMapper {
                 ? traceEntity.getSpans().stream().map(this::mapToSpanDto).toList()
                 : List.of();
 
+        Map<String, String> resourceAttributes = new LinkedHashMap<>();
+        putObserved(resourceAttributes, "service.name", traceEntity.getServiceName(), "unknown-service");
+        putObserved(resourceAttributes, "deployment.environment.name", traceEntity.getEnvironment(), null);
+        putObserved(resourceAttributes, "service.version", traceEntity.getServiceVersion(), null);
+        putObserved(resourceAttributes, "telemetry.sdk.language", traceEntity.getSdkLanguage(), null);
+
         TraceMetadataDto metadata = new TraceMetadataDto(
-                "production",
-                "1.0.0",
-                "java",
-                Map.of(
-                        "service.name", traceEntity.getServiceName() != null ? traceEntity.getServiceName() : "unknown-service",
-                        "root.span", traceEntity.getRootSpanName() != null ? traceEntity.getRootSpanName() : "HTTP Request"
-                )
+                traceEntity.getEnvironment(),
+                traceEntity.getServiceVersion(),
+                traceEntity.getSdkLanguage(),
+                resourceAttributes
         );
 
         return new TraceDetailResponseDto(summary, spanDtos, metadata);
+    }
+
+    private void putObserved(Map<String, String> attributes, String key, String value, String excludedValue) {
+        if (value != null && !value.isBlank() && !value.equals(excludedValue)) {
+            attributes.put(key, value);
+        }
     }
 }

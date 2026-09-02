@@ -68,7 +68,7 @@ public class TraceService {
         String operation = normalizeMethod(httpMethod) + " " + normalizePath(requestUri);
         String traceStatus = httpStatusCode != null && httpStatusCode >= 500 ? "ERROR" : "OK";
 
-        serviceDiscoveryService.discoverService(serviceName, "production", null, "java");
+        serviceDiscoveryService.discoverService(serviceName, null, null, null, startTime, endTime);
 
         TraceEntity trace = new TraceEntity(
                 traceId,

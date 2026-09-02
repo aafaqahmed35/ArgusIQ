@@ -4,6 +4,7 @@ import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.TraceEntity;
 import com.argusiq.tracing.mapper.OtlpMapper;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
 import io.opentelemetry.proto.common.v1.AnyValue;
@@ -19,13 +20,19 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -106,8 +113,14 @@ class OtlpIngestionServiceTest {
         ExportTraceServiceResponse response = otlpIngestionService.ingestProtobufTraces(request.toByteArray());
 
         assertNotNull(response);
-        verify(serviceDiscoveryService).discoverService("AtlasBankService", "production", null, null);
-        verify(traceMergeService).mergeTrace(any(TraceEntity.class));
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochSecond(1_700_000_000L), ZoneOffset.UTC);
+        LocalDateTime end = start.plusNanos(150_000_000L);
+        verify(serviceDiscoveryService).discoverService("AtlasBankService", "production", null, null, start, end);
+        ArgumentCaptor<TraceEntity> traceCaptor = ArgumentCaptor.forClass(TraceEntity.class);
+        verify(traceMergeService).mergeTrace(traceCaptor.capture());
+        assertEquals("production", traceCaptor.getValue().getEnvironment());
+        assertEquals(start, traceCaptor.getValue().getStartTime());
+        assertEquals(end, traceCaptor.getValue().getEndTime());
         verify(messagingTemplate).convertAndSend(eq("/topic/traces"), any(TraceResponseDto.class));
     }
 
@@ -120,6 +133,8 @@ class OtlpIngestionServiceTest {
                 .setTraceId(ByteString.copyFrom(traceId))
                 .setSpanId(ByteString.copyFrom(spanId))
                 .setName("GET /api/v1/health")
+                .setStartTimeUnixNano(1_700_000_000_000_000_000L)
+                .setEndTimeUnixNano(1_700_000_000_100_000_000L)
                 .build();
 
         ExportTraceServiceRequest request = ExportTraceServiceRequest.newBuilder()
@@ -136,6 +151,26 @@ class OtlpIngestionServiceTest {
 
         assertNotNull(response);
         verify(traceMergeService).mergeTrace(any(TraceEntity.class));
+    }
+
+    @Test
+    void rejectsInvalidTimestampsBeforeAnyPersistence() {
+        Span invalid = Span.newBuilder()
+                .setTraceId(ByteString.copyFrom(new byte[16]))
+                .setSpanId(ByteString.copyFrom(new byte[8]))
+                .setName("invalid")
+                .build();
+        ExportTraceServiceRequest request = ExportTraceServiceRequest.newBuilder()
+                .addResourceSpans(ResourceSpans.newBuilder()
+                        .addScopeSpans(ScopeSpans.newBuilder().addSpans(invalid)))
+                .build();
+
+        assertThrows(
+                InvalidProtocolBufferException.class,
+                () -> otlpIngestionService.ingestProtobufTraces(request.toByteArray())
+        );
+        verify(serviceDiscoveryService, never()).discoverService(any(), any(), any(), any(), any(), any());
+        verify(traceMergeService, never()).mergeTrace(any());
     }
 
     @Test

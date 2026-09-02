@@ -16,6 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OtlpMapperTest {
 
@@ -45,6 +46,11 @@ class OtlpMapperTest {
 
         String val = otlpMapper.getAttributeValue(List.of(kv), "service.name");
         assertEquals("AtlasBankService", val);
+    }
+
+    @Test
+    void rejectsMissingOtlpTimestampInsteadOfInventingIngestionTime() {
+        assertThrows(IllegalArgumentException.class, () -> otlpMapper.nanoToLocalDateTime(0));
     }
 
     @Test

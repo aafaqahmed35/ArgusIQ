@@ -10,6 +10,7 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Component
@@ -101,7 +102,7 @@ public class TraceInterceptor implements HandlerInterceptor {
         long executionTime =
                 System.currentTimeMillis() - startTime;
 
-        LocalDateTime timestamp = LocalDateTime.now();
+        LocalDateTime timestamp = LocalDateTime.now(ZoneOffset.UTC);
 
         traceService.saveHttpRequestTrace(
                 request.getMethod(),

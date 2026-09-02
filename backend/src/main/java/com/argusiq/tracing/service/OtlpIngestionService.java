@@ -79,35 +79,60 @@ public class OtlpIngestionService {
             return ExportTraceServiceResponse.getDefaultInstance();
         }
 
+        validateSpanTimestamps(request);
+
         Map<String, List<PendingSpan>> traceSpanMap = new HashMap<>();
 
         for (ResourceSpans resourceSpans : request.getResourceSpansList()) {
             Resource resource = resourceSpans.getResource();
             List<KeyValue> resourceAttrs = resource.getAttributesList();
 
-            String serviceName = otlpMapper.getAttributeValue(resourceAttrs, "service.name");
-            if (serviceName == null || serviceName.isEmpty()) {
+            String serviceName = observedValue(otlpMapper.getAttributeValue(resourceAttrs, "service.name"));
+            if (serviceName == null) {
                 serviceName = "unknown-service";
             }
 
-            String environment = otlpMapper.getAttributeValue(resourceAttrs, "deployment.environment");
+            String environment = observedValue(otlpMapper.getAttributeValue(resourceAttrs, "deployment.environment.name"));
             if (environment == null) {
-                environment = otlpMapper.getAttributeValue(resourceAttrs, "environment");
+                environment = observedValue(otlpMapper.getAttributeValue(resourceAttrs, "deployment.environment"));
+            }
+            if (environment == null) {
+                environment = observedValue(otlpMapper.getAttributeValue(resourceAttrs, "environment"));
             }
 
-            String version = otlpMapper.getAttributeValue(resourceAttrs, "service.version");
-            String language = otlpMapper.getAttributeValue(resourceAttrs, "telemetry.sdk.language");
-            if (language == null) {
-                language = otlpMapper.getAttributeValue(resourceAttrs, "process.runtime.name");
-            }
+            String version = observedValue(otlpMapper.getAttributeValue(resourceAttrs, "service.version"));
+            String language = observedValue(otlpMapper.getAttributeValue(resourceAttrs, "telemetry.sdk.language"));
 
-            discoverService(serviceName, environment, version, language);
+            List<Span> resourceSpanList = resourceSpans.getScopeSpansList().stream()
+                    .flatMap(scopeSpans -> scopeSpans.getSpansList().stream())
+                    .toList();
+            LocalDateTime firstSeen = resourceSpanList.stream()
+                    .mapToLong(Span::getStartTimeUnixNano)
+                    .filter(timestamp -> timestamp > 0)
+                    .min()
+                    .stream()
+                    .mapToObj(otlpMapper::nanoToLocalDateTime)
+                    .findFirst()
+                    .orElse(null);
+            LocalDateTime lastSeen = resourceSpanList.stream()
+                    .mapToLong(Span::getEndTimeUnixNano)
+                    .filter(timestamp -> timestamp > 0)
+                    .max()
+                    .stream()
+                    .mapToObj(otlpMapper::nanoToLocalDateTime)
+                    .findFirst()
+                    .orElse(firstSeen);
+
+            if (!resourceSpanList.isEmpty()) {
+                discoverService(serviceName, environment, version, language, firstSeen, lastSeen);
+            }
 
             for (ScopeSpans scopeSpans : resourceSpans.getScopeSpansList()) {
                 for (Span span : scopeSpans.getSpansList()) {
                     String traceId = otlpMapper.bytesToHex(span.getTraceId());
                     if (traceId != null && !traceId.isEmpty()) {
-                        traceSpanMap.computeIfAbsent(traceId, k -> new ArrayList<>()).add(new PendingSpan(span, serviceName));
+                        traceSpanMap.computeIfAbsent(traceId, k -> new ArrayList<>())
+                                .add(new PendingSpan(span, serviceName, environment, version, language));
                     }
                 }
             }
@@ -124,6 +149,23 @@ public class OtlpIngestionService {
         return payload != null && payload.length >= 2
                 && (payload[0] == (byte) 0x1f)
                 && (payload[1] == (byte) 0x8b);
+    }
+
+    private void validateSpanTimestamps(ExportTraceServiceRequest request) throws InvalidProtocolBufferException {
+        for (ResourceSpans resourceSpans : request.getResourceSpansList()) {
+            for (ScopeSpans scopeSpans : resourceSpans.getScopeSpansList()) {
+                for (Span span : scopeSpans.getSpansList()) {
+                    long start = span.getStartTimeUnixNano();
+                    long end = span.getEndTimeUnixNano();
+                    if (start <= 0 || end <= 0 || end < start) {
+                        throw new InvalidProtocolBufferException(
+                                "OTLP span " + otlpMapper.bytesToHex(span.getSpanId())
+                                        + " has invalid start/end Unix nanoseconds"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     private void processTrace(String traceId, List<PendingSpan> pendingSpans) {
@@ -174,32 +216,21 @@ public class OtlpIngestionService {
 
         List<KeyValue> spanAttrs = rootSpan.getAttributesList();
         String httpMethod = otlpMapper.firstAttributeValue(spanAttrs, "http.method", "http.request.method");
-        if (httpMethod == null) {
-            httpMethod = "OTLP";
-        }
 
         String requestUri = otlpMapper.firstAttributeValue(spanAttrs, "http.target", "url.path", "http.url", "url.full");
-        if (requestUri == null) {
-            requestUri = rootSpanName;
-        }
 
         Integer exitStatus = otlpMapper.parseInteger(otlpMapper.firstAttributeValue(spanAttrs, "http.status_code", "http.response.status_code"));
         String businessOperation = otlpMapper.firstAttributeValue(spanAttrs, "business.operation", "argusiq.business_operation");
-        if (businessOperation == null) {
-            businessOperation = rootSpanName;
-        }
 
         long minStartTimeNano = spans.stream()
                 .mapToLong(Span::getStartTimeUnixNano)
-                .filter(t -> t > 0)
                 .min()
-                .orElse(System.currentTimeMillis() * 1_000_000L);
+                .orElseThrow();
 
         long maxEndTimeNano = spans.stream()
                 .mapToLong(Span::getEndTimeUnixNano)
-                .filter(t -> t > 0)
                 .max()
-                .orElse(minStartTimeNano);
+                .orElseThrow();
 
         LocalDateTime startTime = otlpMapper.nanoToLocalDateTime(minStartTimeNano);
         LocalDateTime endTime = otlpMapper.nanoToLocalDateTime(maxEndTimeNano);
@@ -227,6 +258,9 @@ public class OtlpIngestionService {
         traceEntity.setCriticalPathDurationMs(Math.max(0L, (longestSpan.getEndTimeUnixNano() - longestSpan.getStartTimeUnixNano()) / 1_000_000L));
         traceEntity.setTimelineSummary(buildTimelineSummary(pendingSpans, durationMs));
         traceEntity.setEvidenceGraphId("trace:" + traceId);
+        traceEntity.setEnvironment(rootPendingSpan.environment());
+        traceEntity.setServiceVersion(rootPendingSpan.version());
+        traceEntity.setSdkLanguage(rootPendingSpan.language());
 
         for (PendingSpan pendingSpan : pendingSpans) {
             SpanEntity spanEntity = otlpMapper.mapToSpanEntity(pendingSpan.span(), pendingSpan.serviceName());
@@ -270,12 +304,23 @@ public class OtlpIngestionService {
         throw lastFailure != null ? lastFailure : new IllegalStateException("OTLP trace merge failed");
     }
 
-    private void discoverService(String serviceName, String environment, String version, String language) {
+    private void discoverService(
+            String serviceName,
+            String environment,
+            String version,
+            String language,
+            LocalDateTime firstSeen,
+            LocalDateTime lastSeen
+    ) {
         try {
-            serviceDiscoveryService.discoverService(serviceName, environment, version, language);
+            serviceDiscoveryService.discoverService(serviceName, environment, version, language, firstSeen, lastSeen);
         } catch (DataIntegrityViolationException firstInsertRace) {
-            serviceDiscoveryService.discoverService(serviceName, environment, version, language);
+            serviceDiscoveryService.discoverService(serviceName, environment, version, language, firstSeen, lastSeen);
         }
+    }
+
+    private String observedValue(String value) {
+        return value != null && !value.isBlank() ? value.trim() : null;
     }
 
     private String buildTimelineSummary(List<PendingSpan> pendingSpans, long durationMs) {
@@ -283,6 +328,12 @@ public class OtlpIngestionService {
         return pendingSpans.size() + " spans across " + serviceCount + " services in " + durationMs + "ms";
     }
 
-    private record PendingSpan(Span span, String serviceName) {
+    private record PendingSpan(
+            Span span,
+            String serviceName,
+            String environment,
+            String version,
+            String language
+    ) {
     }
 }

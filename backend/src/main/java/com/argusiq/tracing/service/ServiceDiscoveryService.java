@@ -23,27 +23,60 @@ public class ServiceDiscoveryService {
 
     @Transactional
     public MonitoredService discoverService(String serviceName, String environment, String version, String language) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        return discoverService(serviceName, environment, version, language, now, now);
+    }
+
+    @Transactional
+    public MonitoredService discoverService(
+            String serviceName,
+            String environment,
+            String version,
+            String language,
+            LocalDateTime observedFirstSeen,
+            LocalDateTime observedLastSeen
+    ) {
         String finalServiceName = (serviceName != null && !serviceName.trim().isEmpty()) ? serviceName.trim() : "unknown-service";
-        String finalEnv = (environment != null && !environment.trim().isEmpty()) ? environment.trim() : "production";
-        String finalVersion = (version != null && !version.trim().isEmpty()) ? version.trim() : "1.0.0";
-        String finalLang = (language != null && !language.trim().isEmpty()) ? language.trim() : "unknown";
+        String finalEnv = observedValue(environment);
+        String finalVersion = observedValue(version);
+        String finalLang = observedValue(language);
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime firstSeen = observedFirstSeen != null ? observedFirstSeen : now;
+        LocalDateTime lastSeen = observedLastSeen != null ? observedLastSeen : firstSeen;
+        if (lastSeen.isBefore(firstSeen)) {
+            lastSeen = firstSeen;
+        }
+        LocalDateTime finalFirstSeen = firstSeen;
+        LocalDateTime finalLastSeen = lastSeen;
 
-        return serviceRepository.findByServiceName(finalServiceName)
+        return serviceRepository.findByServiceNameForUpdate(finalServiceName)
                 .map(existing -> {
-                    existing.setLastSeen(now);
-                    if (environment != null && !environment.isEmpty()) {
+                    LocalDateTime previousLastSeen = existing.getLastSeen();
+                    boolean newerObservation = previousLastSeen == null || finalLastSeen.isAfter(previousLastSeen);
+                    if (existing.getFirstSeen() == null || finalFirstSeen.isBefore(existing.getFirstSeen())) {
+                        existing.setFirstSeen(finalFirstSeen);
+                    }
+                    if (previousLastSeen == null || finalLastSeen.isAfter(previousLastSeen)) {
+                        existing.setLastSeen(finalLastSeen);
+                    }
+                    if (finalEnv != null && (!hasObservedValue(existing.getEnvironment()) || newerObservation)) {
                         existing.setEnvironment(finalEnv);
                     }
-                    if (version != null && !version.isEmpty()) {
+                    if (finalVersion != null && (!hasObservedValue(existing.getVersion()) || newerObservation)) {
                         existing.setVersion(finalVersion);
                     }
-                    if (language != null && !language.isEmpty()) {
+                    if (finalLang != null && (!hasObservedValue(existing.getLanguage()) || newerObservation)) {
                         existing.setLanguage(finalLang);
                     }
                     existing.setStatus("ACTIVE");
-                    logger.info("Updated existing service: {} [env={}, ver={}, lang={}]", finalServiceName, finalEnv, finalVersion, finalLang);
+                    logger.info(
+                            "Updated existing service: {} [env={}, ver={}, lang={}]",
+                            finalServiceName,
+                            existing.getEnvironment(),
+                            existing.getVersion(),
+                            existing.getLanguage()
+                    );
                     return serviceRepository.save(existing);
                 })
                 .orElseGet(() -> {
@@ -52,12 +85,20 @@ public class ServiceDiscoveryService {
                             finalEnv,
                             finalVersion,
                             finalLang,
-                            now,
-                            now,
+                            finalFirstSeen,
+                            finalLastSeen,
                             "ACTIVE"
                     );
                     logger.info("Discovered new service: {} [env={}, ver={}, lang={}]", finalServiceName, finalEnv, finalVersion, finalLang);
                     return serviceRepository.save(newService);
                 });
+    }
+
+    private String observedValue(String value) {
+        return hasObservedValue(value) ? value.trim() : null;
+    }
+
+    private boolean hasObservedValue(String value) {
+        return value != null && !value.isBlank();
     }
 }

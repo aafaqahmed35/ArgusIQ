@@ -2,11 +2,16 @@ package com.argusiq.tracing.interceptor;
 
 import com.argusiq.tracing.service.TraceService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.TimeZone;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -81,5 +86,33 @@ class TraceInterceptorTest {
                 any(LocalDateTime.class),
                 eq(200)
         );
+    }
+
+    @Test
+    void capturesLocalTraceTimestampAsUtcWhenJvmTimezoneIsNotUtc() throws Exception {
+        TimeZone originalTimeZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/orders");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            LocalDateTime beforeUtc = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(1);
+
+            traceInterceptor.preHandle(request, response, new Object());
+            traceInterceptor.afterCompletion(request, response, new Object(), null);
+
+            LocalDateTime afterUtc = LocalDateTime.now(ZoneOffset.UTC).plusSeconds(1);
+            ArgumentCaptor<LocalDateTime> timestamp = ArgumentCaptor.forClass(LocalDateTime.class);
+            verify(traceService).saveHttpRequestTrace(
+                    eq("POST"),
+                    eq("/api/v1/orders"),
+                    anyLong(),
+                    timestamp.capture(),
+                    eq(200)
+            );
+            assertFalse(timestamp.getValue().isBefore(beforeUtc));
+            assertTrue(timestamp.getValue().isBefore(afterUtc));
+        } finally {
+            TimeZone.setDefault(originalTimeZone);
+        }
     }
 }

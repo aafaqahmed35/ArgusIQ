@@ -15,10 +15,10 @@ public class TraceMetadataDto {
             String sdkLanguage,
             Map<String, String> resourceAttributes
     ) {
-        this.environment = environment != null ? environment : "production";
-        this.serviceVersion = serviceVersion != null ? serviceVersion : "1.0.0";
-        this.sdkLanguage = sdkLanguage != null ? sdkLanguage : "java";
-        this.resourceAttributes = resourceAttributes != null ? resourceAttributes : Map.of();
+        this.environment = environment;
+        this.serviceVersion = serviceVersion;
+        this.sdkLanguage = sdkLanguage;
+        this.resourceAttributes = resourceAttributes != null ? Map.copyOf(resourceAttributes) : Map.of();
     }
 
     public String getEnvironment() {

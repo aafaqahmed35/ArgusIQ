@@ -85,6 +85,15 @@ public class TraceEntity {
     @Column(name = "evidence_graph_id")
     private String evidenceGraphId;
 
+    @Column(name = "environment")
+    private String environment;
+
+    @Column(name = "service_version")
+    private String serviceVersion;
+
+    @Column(name = "sdk_language")
+    private String sdkLanguage;
+
     @OneToMany(mappedBy = "trace", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 100)
     private List<SpanEntity> spans = new ArrayList<>();
@@ -263,5 +272,29 @@ public class TraceEntity {
 
     public void setEvidenceGraphId(String evidenceGraphId) {
         this.evidenceGraphId = evidenceGraphId;
+    }
+
+    public String getEnvironment() {
+        return environment;
+    }
+
+    public void setEnvironment(String environment) {
+        this.environment = environment;
+    }
+
+    public String getServiceVersion() {
+        return serviceVersion;
+    }
+
+    public void setServiceVersion(String serviceVersion) {
+        this.serviceVersion = serviceVersion;
+    }
+
+    public String getSdkLanguage() {
+        return sdkLanguage;
+    }
+
+    public void setSdkLanguage(String sdkLanguage) {
+        this.sdkLanguage = sdkLanguage;
     }
 }

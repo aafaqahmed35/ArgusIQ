@@ -75,6 +75,23 @@ On a fresh PostgreSQL database, Flyway applies the migrations in
 Normal local startup uses `ARGUSIQ_DB_URL`, `ARGUSIQ_DB_USERNAME`, and
 `ARGUSIQ_DB_PASSWORD` from the configuration table above.
 
+#### Telemetry data contract
+
+All persisted `LocalDateTime` telemetry values represent UTC wall-clock time;
+PostgreSQL stores them as `timestamp without time zone`. OTLP resource metadata is
+snapshotted on each trace so historical trace detail does not change when a
+service later reports a different deployment or version. Missing environment,
+service version, and SDK language remain `null` rather than receiving synthetic
+defaults.
+
+For incremental trace batches, nonblank canonical-root metadata replaces metadata
+from a provisional child root. Once the canonical root is stable, the first
+nonblank value for each metadata field is retained and missing or conflicting
+retries cannot erase or oscillate it. Service discovery separately represents the
+latest service observation: `firstSeen` is the earliest span start, `lastSeen` is
+the latest span end, missing metadata never erases known values, and newer
+observed nonblank metadata supersedes older values.
+
 #### Existing databases created by Hibernate
 
 Flyway automatic baselining is deliberately disabled. An existing non-empty

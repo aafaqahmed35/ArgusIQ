@@ -102,8 +102,8 @@ class PostgresPersistenceIntegrationTest extends AbstractPostgresIntegrationTest
 
     @Test
     void freshPostgresRunsFlywayThenHibernateValidationAndStartsContext() {
-        Integer successfulMigration = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '1' AND success",
+        Integer successfulMigrations = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version IN ('1', '2') AND success",
                 Integer.class
         );
         Integer tableCount = jdbcTemplate.queryForObject(
@@ -113,7 +113,7 @@ class PostgresPersistenceIntegrationTest extends AbstractPostgresIntegrationTest
         );
         String databaseProduct = jdbcTemplate.queryForObject("SELECT version()", String.class);
 
-        assertEquals(1, successfulMigration);
+        assertEquals(2, successfulMigrations);
         assertEquals(6, tableCount);
         assertNotNull(ingestionService);
         assertTrue(databaseProduct.startsWith("PostgreSQL 17.6"));
@@ -164,11 +164,19 @@ class PostgresPersistenceIntegrationTest extends AbstractPostgresIntegrationTest
                         + "WHERE constraint_schema = 'public' AND constraint_name = 'fk_spans_trace_entity'",
                 String.class
         );
+        Integer traceMetadataColumns = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns "
+                        + "WHERE table_schema = 'public' AND table_name = 'traces' "
+                        + "AND column_name IN ('environment', 'service_version', 'sdk_language') "
+                        + "AND data_type = 'character varying' AND is_nullable = 'YES'",
+                Integer.class
+        );
 
         assertEquals("BY DEFAULT", traceIdentity);
         assertEquals("timestamp without time zone", timestampType);
         assertEquals("YES", spanOwnerNullable);
         assertEquals("NO ACTION", deleteRule);
+        assertEquals(3, traceMetadataColumns);
 
         ingest(span(TRACE_ID_BYTES, 1, null, Span.SpanKind.SPAN_KIND_SERVER, 0, 1_000, "root"));
         traceRepository.deleteById(loadTrace(TRACE_ID).getId());
@@ -212,6 +220,7 @@ class PostgresPersistenceIntegrationTest extends AbstractPostgresIntegrationTest
         assertEquals(4, trace.getSpans().size());
         assertEquals(4, spanRepository.countByTraceId(TRACE_ID));
         assertEquals(1_000L, trace.getDurationMs());
+        assertEquals("test", trace.getEnvironment());
     }
 
     @Test

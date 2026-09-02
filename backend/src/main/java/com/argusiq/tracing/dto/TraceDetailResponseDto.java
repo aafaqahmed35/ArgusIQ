@@ -15,7 +15,7 @@ public class TraceDetailResponseDto {
     ) {
         this.summary = summary;
         this.spans = spans != null ? spans : List.of();
-        this.metadata = metadata != null ? metadata : new TraceMetadataDto("production", "1.0.0", "java", null);
+        this.metadata = metadata != null ? metadata : new TraceMetadataDto(null, null, null, null);
     }
 
     public TraceResponseDto getSummary() {

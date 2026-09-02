@@ -151,6 +151,9 @@ class AtlasBankTelemetryExportIntegrationTest extends AbstractArgusIqIntegration
         assertEquals("POST", trace.getHttpMethod());
         assertEquals("/api/v1/accounts/transfer", trace.getRequestUri());
         assertEquals("OK", trace.getStatusCode());
+        assertEquals("production", trace.getEnvironment());
+        assertEquals("2.4.0", trace.getServiceVersion());
+        assertEquals("java", trace.getSdkLanguage());
         assertEquals(2, trace.getSpans().size());
 
         // 4. Verify Parent-Child Relationship preserved
@@ -170,5 +173,14 @@ class AtlasBankTelemetryExportIntegrationTest extends AbstractArgusIqIntegration
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].httpMethod").value("POST"))
                 .andExpect(jsonPath("$[0].requestUri").value("/api/v1/accounts/transfer"));
+
+        // 6. Verify trace detail exposes observed resource metadata without fabricated defaults
+        mockMvc.perform(get("/api/v1/traces/4bf92f3577b34da6a3ce929d0e0e4736")
+                        .with(httpBasic(INVESTIGATION_USERNAME, INVESTIGATION_PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metadata.environment").value("production"))
+                .andExpect(jsonPath("$.metadata.serviceVersion").value("2.4.0"))
+                .andExpect(jsonPath("$.metadata.sdkLanguage").value("java"))
+                .andExpect(jsonPath("$.metadata.resourceAttributes['service.name']").value("AtlasBank"));
     }
 }
