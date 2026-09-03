@@ -1,11 +1,18 @@
 package com.argusiq.tracing.service;
 
+import com.argusiq.tracing.dto.EndpointMetricDto;
 import com.argusiq.tracing.dto.MetricsResponse;
-import com.argusiq.tracing.dto.NamedMetricDto;
-import com.argusiq.tracing.repository.SpanRepository;
+import com.argusiq.tracing.dto.OperationMetricDto;
+import com.argusiq.tracing.event.TelemetryChangedEvent;
+import com.argusiq.tracing.repository.TelemetryAnalyticsRepository;
+import com.argusiq.tracing.repository.TelemetryAnalyticsRepository.EndpointAggregate;
+import com.argusiq.tracing.repository.TelemetryAnalyticsRepository.GlobalTraceAggregate;
+import com.argusiq.tracing.repository.TelemetryAnalyticsRepository.OperationAggregate;
 import com.argusiq.tracing.repository.TraceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -17,15 +24,17 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 public class MetricsService {
 
-    private static final long CACHE_TTL_MS = 30_000L;
+    static final long CACHE_TTL_MS = 30_000L;
+    private static final int RANKING_LIMIT = 10;
+    private static final int MAX_ENDPOINT_LIMIT = 100;
 
+    private final TelemetryAnalyticsRepository analyticsRepository;
     private final TraceRepository traceRepository;
-    private final SpanRepository spanRepository;
     private final AtomicReference<CachedMetrics> cache = new AtomicReference<>();
 
-    public MetricsService(TraceRepository traceRepository, SpanRepository spanRepository) {
+    public MetricsService(TelemetryAnalyticsRepository analyticsRepository, TraceRepository traceRepository) {
+        this.analyticsRepository = analyticsRepository;
         this.traceRepository = traceRepository;
-        this.spanRepository = spanRepository;
     }
 
     @Transactional(readOnly = true)
@@ -41,98 +50,107 @@ public class MetricsService {
         return metrics;
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onTelemetryChanged(TelemetryChangedEvent ignored) {
+        invalidate();
+    }
+
     public void invalidate() {
         cache.set(null);
     }
 
     @Transactional(readOnly = true)
     public MetricsResponse computeMetrics() {
-        long total = traceRepository.count();
-        long errors = traceRepository.countErrors();
-        List<Long> durations = traceRepository.findAllDurationsSorted();
-
-        double avg = nullableDouble(traceRepository.findAverageDurationMs());
-        long min = traceRepository.findMinDurationMs() != null ? traceRepository.findMinDurationMs() : 0L;
-        long max = traceRepository.findMaxDurationMs() != null ? traceRepository.findMaxDurationMs() : 0L;
-        double errorRate = total > 0 ? (errors * 100.0) / total : 0.0;
-        double successRate = total > 0 ? 100.0 - errorRate : 0.0;
-
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        long perMinute = traceRepository.countSince(now.minusMinutes(1));
-        long perHour = traceRepository.countSince(now.minusHours(1));
-        long perDay = traceRepository.countSince(now.minusDays(1));
+        GlobalTraceAggregate aggregate = analyticsRepository.globalTraceAggregate(now);
+        List<OperationMetricDto> operations = analyticsRepository.slowestOperationAggregates(RANKING_LIMIT).stream()
+                .map(this::operationMetric)
+                .toList();
+
+        Double errorRate = percentage(aggregate.errorCount(), aggregate.totalTraces());
+        Double successRate = errorRate != null ? 100.0 - errorRate : null;
 
         return new MetricsResponse(
-                avg,
-                percentile(durations, 50),
-                percentile(durations, 50),
-                percentile(durations, 90),
-                percentile(durations, 95),
-                percentile(durations, 99),
-                min,
-                max,
+                aggregate.totalTraces(),
+                aggregate.averageLatencyMs(),
+                aggregate.p50LatencyMs(),
+                aggregate.p50LatencyMs(),
+                aggregate.p90LatencyMs(),
+                aggregate.p95LatencyMs(),
+                aggregate.p99LatencyMs(),
+                aggregate.minimumLatencyMs(),
+                aggregate.maximumLatencyMs(),
+                aggregate.errorCount(),
                 errorRate,
                 successRate,
-                total,
-                perMinute,
-                perHour,
-                perDay,
-                traceRepository.countUniqueEndpoints(),
-                traceRepository.countUniqueServices(),
-                metricRows(traceRepository.findEndpointLatencyRankingDesc(), 10),
-                metricRows(traceRepository.findEndpointLatencyRankingAsc(), 10),
-                countRows(traceRepository.findMostFailingEndpoints(), 10),
-                countRows(spanRepository.findMostActiveServices(), 10),
-                operationRows(spanRepository.findMostExpensiveOperations(), 10),
-                histogram(durations),
+                aggregate.requestsPerMinute(),
+                aggregate.requestsPerHour(),
+                aggregate.requestsPerDay(),
+                aggregate.uniqueEndpoints(),
+                aggregate.uniqueServices(),
+                endpointMetrics("latency", "desc", RANKING_LIMIT),
+                endpointMetrics("latency", "asc", RANKING_LIMIT),
+                endpointMetrics("traffic", "desc", RANKING_LIMIT),
+                endpointMetrics("errors", "desc", RANKING_LIMIT),
+                operations,
+                histogram(aggregate),
                 distribution(traceRepository.findStatusCodeDistribution()),
                 distribution(traceRepository.findHttpMethodDistribution())
         );
     }
 
-    public List<NamedMetricDto> endpointMetrics() {
-        return metricRows(traceRepository.findEndpointLatencyRankingDesc(), 100);
-    }
-
-    public List<NamedMetricDto> serviceMetrics() {
-        return traceRepository.findServiceMetricRows().stream()
-                .map(row -> new NamedMetricDto(String.valueOf(row[0]), nullableDouble(row[1]), ((Number) row[2]).longValue()))
-                .toList();
-    }
-
-    private double percentile(List<Long> sortedDurations, int percentile) {
-        if (sortedDurations == null || sortedDurations.isEmpty()) {
-            return 0.0;
+    @Transactional(readOnly = true)
+    public List<EndpointMetricDto> endpointMetrics(String sortBy, String sortDirection, int requestedLimit) {
+        if (!List.of("traffic", "latency", "errors").contains(sortBy)) {
+            throw new IllegalArgumentException("sortBy must be traffic, latency, or errors");
         }
-        double rank = (percentile / 100.0) * (sortedDurations.size() - 1);
-        int lower = (int) Math.floor(rank);
-        int upper = (int) Math.ceil(rank);
-        if (lower == upper) {
-            return sortedDurations.get(lower);
+        if (!"asc".equalsIgnoreCase(sortDirection) && !"desc".equalsIgnoreCase(sortDirection)) {
+            throw new IllegalArgumentException("sortDirection must be asc or desc");
         }
-        double weight = rank - lower;
-        return sortedDurations.get(lower) * (1.0 - weight) + sortedDurations.get(upper) * weight;
-    }
-
-    private List<NamedMetricDto> metricRows(List<Object[]> rows, int limit) {
-        return rows.stream()
-                .limit(limit)
-                .map(row -> new NamedMetricDto(String.valueOf(row[0]), nullableDouble(row[1]), ((Number) row[2]).longValue()))
+        int limit = Math.max(1, Math.min(requestedLimit, MAX_ENDPOINT_LIMIT));
+        return analyticsRepository.endpointAggregates(sortBy, sortDirection, limit).stream()
+                .map(this::endpointMetric)
                 .toList();
     }
 
-    private List<NamedMetricDto> countRows(List<Object[]> rows, int limit) {
-        return rows.stream()
-                .limit(limit)
-                .map(row -> new NamedMetricDto(String.valueOf(row[0]), ((Number) row[1]).doubleValue(), ((Number) row[1]).longValue()))
-                .toList();
+    private EndpointMetricDto endpointMetric(EndpointAggregate aggregate) {
+        return new EndpointMetricDto(
+                aggregate.endpoint(),
+                aggregate.requestCount(),
+                aggregate.averageLatencyMs(),
+                aggregate.p95LatencyMs(),
+                aggregate.errorCount(),
+                percentage(aggregate.errorCount(), aggregate.requestCount()),
+                aggregate.minimumLatencyMs(),
+                aggregate.maximumLatencyMs()
+        );
     }
 
-    private List<NamedMetricDto> operationRows(List<Object[]> rows, int limit) {
-        return rows.stream()
-                .limit(limit)
-                .map(row -> new NamedMetricDto(row[1] + ":" + row[0], nullableDouble(row[2]), ((Number) row[4]).longValue()))
-                .toList();
+    private OperationMetricDto operationMetric(OperationAggregate aggregate) {
+        return new OperationMetricDto(
+                aggregate.serviceName(),
+                aggregate.operationName(),
+                aggregate.observationCount(),
+                aggregate.averageLatencyMs(),
+                aggregate.minimumLatencyMs(),
+                aggregate.maximumLatencyMs(),
+                aggregate.errorCount()
+        );
+    }
+
+    private Double percentage(long numerator, long denominator) {
+        return denominator > 0 ? numerator * 100.0 / denominator : null;
+    }
+
+    private Map<String, Long> histogram(GlobalTraceAggregate aggregate) {
+        Map<String, Long> buckets = new LinkedHashMap<>();
+        buckets.put("0-100ms", aggregate.duration0To100());
+        buckets.put("101-250ms", aggregate.duration101To250());
+        buckets.put("251-500ms", aggregate.duration251To500());
+        buckets.put("501-1000ms", aggregate.duration501To1000());
+        buckets.put("1001-2500ms", aggregate.duration1001To2500());
+        buckets.put("2501ms+", aggregate.duration2501Plus());
+        return buckets;
     }
 
     private Map<String, Long> distribution(List<Object[]> rows) {
@@ -141,30 +159,6 @@ public class MetricsService {
             result.put(String.valueOf(row[0] != null ? row[0] : "UNKNOWN"), ((Number) row[1]).longValue());
         }
         return result;
-    }
-
-    private Map<String, Long> histogram(List<Long> durations) {
-        Map<String, Long> buckets = new LinkedHashMap<>();
-        buckets.put("0-100ms", 0L);
-        buckets.put("101-250ms", 0L);
-        buckets.put("251-500ms", 0L);
-        buckets.put("501-1000ms", 0L);
-        buckets.put("1001-2500ms", 0L);
-        buckets.put("2501ms+", 0L);
-        for (Long duration : durations) {
-            String bucket = duration <= 100 ? "0-100ms"
-                    : duration <= 250 ? "101-250ms"
-                    : duration <= 500 ? "251-500ms"
-                    : duration <= 1000 ? "501-1000ms"
-                    : duration <= 2500 ? "1001-2500ms"
-                    : "2501ms+";
-            buckets.compute(bucket, (key, value) -> value == null ? 1L : value + 1);
-        }
-        return buckets;
-    }
-
-    private double nullableDouble(Object value) {
-        return value instanceof Number number ? number.doubleValue() : 0.0;
     }
 
     private record CachedMetrics(MetricsResponse metrics, long createdAtMs) {

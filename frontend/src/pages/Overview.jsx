@@ -72,7 +72,7 @@ function Overview() {
     return [
       {
         label: 'Total Traces',
-        value: backendMetrics ? Number(backendMetrics.throughput).toLocaleString() : '—',
+        value: backendMetrics ? Number(backendMetrics.totalTraces).toLocaleString() : '—',
         detail: 'All persisted traces · 30 s cache',
         tone: 'signal',
       },

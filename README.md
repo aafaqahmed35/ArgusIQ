@@ -92,6 +92,31 @@ latest service observation: `firstSeen` is the earliest span start, `lastSeen` i
 the latest span end, missing metadata never erases known values, and newer
 observed nonblank metadata supersedes older values.
 
+#### Metrics semantics
+
+Global analytics are aggregates over persisted traces. `totalTraces` is a count,
+not throughput. `requestsPerMinute`, `requestsPerHour`, and `requestsPerDay` are
+counts inside closed rolling UTC windows ending at query time. Latency averages,
+bounds, and continuous p50/p90/p95/p99 percentiles are calculated by PostgreSQL;
+latency and percentage fields are `null` when no observations provide a valid
+denominator.
+
+Service identity comes from discovered `service.name` resource attributes.
+Service request metrics count observed `SERVER` spans, and operation metrics
+aggregate observed spans by service and operation name. Error rate and success
+rate are shares of observed requests; success rate is not infrastructure
+availability. `firstSeen`, `lastSeen`, and `observationAgeMinutes` describe the
+telemetry observation period and do not claim process uptime. `telemetryStatus`
+is an evidence-limited signal: `ACTIVE` means recently observed without a high
+recent error share, `ERRORING` means the last five minutes contain at least 10%
+erroring observed requests, and `STALE` means no telemetry was observed for five
+minutes. In particular, `STALE` does not prove that a service is unavailable.
+
+Analytics summaries and endpoint rankings cover persisted history. Service
+detail includes separately bounded recent traces and recent errors (up to ten),
+while the shared frontend live window remains recent activity rather than an
+authoritative aggregate.
+
 #### Existing databases created by Hibernate
 
 Flyway automatic baselining is deliberately disabled. An existing non-empty

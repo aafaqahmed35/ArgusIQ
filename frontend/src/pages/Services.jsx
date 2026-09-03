@@ -1,10 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/layout/PageHeader'
-import ServiceGroupDetail from '../components/services/ServiceGroupDetail'
-import ServiceGroupsPanel from '../components/services/ServiceGroupsPanel'
-import ServicesLimitationBanner from '../components/services/ServicesLimitationBanner'
-import { buildServiceGroups } from '../lib/serviceGrouping'
-import { useTraces } from '../hooks/useTraces'
+import ServiceDetailPanel from '../components/services/ServiceDetailPanel'
+import ServiceListPanel from '../components/services/ServiceListPanel'
+import { fetchService, fetchServices } from '../services/traceApi'
 import '../styles/dashboard.css'
 
 const SORT_FIELD = {
@@ -13,74 +11,121 @@ const SORT_FIELD = {
 }
 
 function Services() {
-  const { recentTraces, recentTraceLimit, isLoading, error, refreshRecentTraces } = useTraces()
-  const [selectedGroup, setSelectedGroup] = useState(null)
+  const [services, setServices] = useState([])
+  const [selectedServiceId, setSelectedServiceId] = useState(null)
+  const [selectedService, setSelectedService] = useState(null)
   const [sortField, setSortField] = useState(SORT_FIELD.TRAFFIC)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isDetailLoading, setIsDetailLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [detailError, setDetailError] = useState(null)
+  const serviceListRequestId = useRef(0)
+  const serviceDetailRequestId = useRef(0)
 
-  const serviceGroups = useMemo(() => buildServiceGroups(recentTraces), [recentTraces])
+  const loadServices = useCallback(async () => {
+    const requestId = ++serviceListRequestId.current
+    setIsLoading(true)
+    setError(null)
+    try {
+      const data = await fetchServices()
+      if (requestId === serviceListRequestId.current) {
+        setServices(Array.isArray(data) ? data : [])
+      }
+    } catch (requestError) {
+      if (requestId === serviceListRequestId.current) {
+        setServices([])
+        setError(requestError)
+      }
+    } finally {
+      if (requestId === serviceListRequestId.current) {
+        setIsLoading(false)
+      }
+    }
+  }, [])
 
-  const sortedGroups = useMemo(() => {
-    const groups = [...serviceGroups.groups]
+  const loadServiceDetail = useCallback(async (serviceId) => {
+    const requestId = ++serviceDetailRequestId.current
+    if (serviceId === null) {
+      setSelectedService(null)
+      setIsDetailLoading(false)
+      setDetailError(null)
+      return
+    }
 
+    setIsDetailLoading(true)
+    setDetailError(null)
+    setSelectedService(null)
+    try {
+      const data = await fetchService(serviceId)
+      if (requestId === serviceDetailRequestId.current) {
+        setSelectedService(data)
+      }
+    } catch (requestError) {
+      if (requestId === serviceDetailRequestId.current) {
+        setSelectedService(null)
+        setDetailError(requestError)
+      }
+    } finally {
+      if (requestId === serviceDetailRequestId.current) {
+        setIsDetailLoading(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    queueMicrotask(loadServices)
+  }, [loadServices])
+
+  const sortedServices = useMemo(() => {
+    const values = [...services]
     if (sortField === SORT_FIELD.LATENCY) {
-      return groups.sort((left, right) => {
-        const leftLatency = left.averageResponseTime ?? -1
-        const rightLatency = right.averageResponseTime ?? -1
-
-        return rightLatency - leftLatency || right.requestCount - left.requestCount || left.name.localeCompare(right.name)
+      return values.sort((left, right) => {
+        const leftLatency = left.averageLatencyMs ?? -1
+        const rightLatency = right.averageLatencyMs ?? -1
+        return rightLatency - leftLatency || left.serviceName.localeCompare(right.serviceName)
       })
     }
-
-    return groups.sort(
-      (left, right) =>
-        right.requestCount - left.requestCount || left.name.localeCompare(right.name),
+    return values.sort(
+      (left, right) => right.requestCount - left.requestCount || left.serviceName.localeCompare(right.serviceName),
     )
-  }, [serviceGroups.groups, sortField])
+  }, [services, sortField])
+
+  const handleServiceSelect = useCallback((service) => {
+    setSelectedServiceId(service.id)
+    loadServiceDetail(service.id)
+  }, [loadServiceDetail])
 
   const handleRefresh = useCallback(async () => {
-    await refreshRecentTraces()
-  }, [refreshRecentTraces])
-
-  const visibleSelectedGroup = useMemo(() => {
-    if (!selectedGroup) {
-      return null
-    }
-
-    return sortedGroups.some((group) => group.key === selectedGroup.key) ? selectedGroup : null
-  }, [selectedGroup, sortedGroups])
+    await Promise.all([loadServices(), loadServiceDetail(selectedServiceId)])
+  }, [loadServiceDetail, loadServices, selectedServiceId])
 
   return (
     <div className="services-workspace">
       <section className="services-workspace__header" aria-label="Services header">
         <PageHeader
           title="Services"
-          subtitle="Recent activity groups derived from URI prefixes"
-          isLoading={isLoading}
+          subtitle="Discovered OpenTelemetry service identities with observed request and operation metrics."
+          isLoading={isLoading || isDetailLoading}
           onRefresh={handleRefresh}
           showConnectionStatus={false}
-          statusNote={`Latest ${recentTraces.length.toLocaleString()} traces (limit ${recentTraceLimit})`}
+          statusNote="Persisted service telemetry"
         />
       </section>
 
-      <ServicesLimitationBanner recentTraceLimit={recentTraceLimit} />
-
-      <section className="services-workspace__body" aria-label="Service groups">
-        <ServiceGroupsPanel
-          groups={sortedGroups}
+      <section className="services-workspace__body" aria-label="Observed services">
+        <ServiceListPanel
+          services={sortedServices}
           isLoading={isLoading}
           error={error}
-          selectedGroupKey={visibleSelectedGroup?.key ?? null}
-          onGroupSelect={setSelectedGroup}
+          selectedServiceId={selectedServiceId}
+          onServiceSelect={handleServiceSelect}
           sortField={sortField}
           onSortFieldChange={setSortField}
-          totalRequests={serviceGroups.totalRequests}
-          groupCount={serviceGroups.groupCount}
-          recentTraceLimit={recentTraceLimit}
         />
-        <ServiceGroupDetail
-          group={visibleSelectedGroup}
-          totalRequests={serviceGroups.totalRequests}
-          recentTraceLimit={recentTraceLimit}
+        <ServiceDetailPanel
+          service={selectedService}
+          isLoading={isDetailLoading}
+          error={detailError}
         />
       </section>
     </div>

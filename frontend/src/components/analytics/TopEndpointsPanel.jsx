@@ -1,5 +1,5 @@
 const SORT_FIELDS = [
-  { value: 'traffic', label: 'Traffic' },
+  { value: 'traffic', label: 'Requests' },
   { value: 'latency', label: 'Latency' },
 ]
 
@@ -14,7 +14,7 @@ function TopEndpointsPanel({
   sourceNote = 'Based on the bounded recent trace window',
   formatDuration,
 }) {
-  const maxCount = Math.max(...endpoints.map((endpoint) => endpoint.count), 1)
+  const maxCount = Math.max(...endpoints.map((endpoint) => endpoint.requestCount), 1)
 
   return (
     <section
@@ -50,12 +50,12 @@ function TopEndpointsPanel({
         </div>
       ) : error ? (
         <div className="table-state table-state--error" role="alert">
-          Unable to load traces from the backend.
+          Unable to load endpoint aggregates from the backend.
         </div>
       ) : endpoints.length === 0 ? (
         <div className="analytics-empty">
           <strong>No endpoint traffic yet</strong>
-          <span>Endpoint rankings will appear after traces are loaded.</span>
+          <span>Endpoint rankings will appear after traces are persisted.</span>
         </div>
       ) : (
         <ol className="endpoint-list endpoint-list--interactive">
@@ -69,7 +69,7 @@ function TopEndpointsPanel({
               <li
                 className={`endpoint-list__item ${isSelected ? 'endpoint-list__item--selected' : ''}`}
                 key={endpoint.endpoint}
-                style={{ '--endpoint-share': `${Math.max((endpoint.count / maxCount) * 100, 4)}%` }}
+                style={{ '--endpoint-share': `${Math.max((endpoint.requestCount / maxCount) * 100, 4)}%` }}
               >
                 <button className="endpoint-list__button" type="button" onClick={handleSelect}>
                   <span className="endpoint-list__rank">{String(index + 1).padStart(2, '0')}</span>
@@ -80,8 +80,8 @@ function TopEndpointsPanel({
                     <span className="endpoint-list__bar" aria-hidden="true" />
                   </span>
                   <span className="endpoint-list__metrics">
-                    <strong>{endpoint.count.toLocaleString()}</strong>
-                    <small>{formatDuration(endpoint.averageResponseTime)}</small>
+                    <strong>{endpoint.requestCount.toLocaleString()}</strong>
+                    <small>{formatDuration(endpoint.averageLatencyMs)}</small>
                   </span>
                 </button>
               </li>

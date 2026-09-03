@@ -1,10 +1,13 @@
 package com.argusiq.tracing.controller;
 
+import com.argusiq.tracing.dto.EndpointMetricDto;
 import com.argusiq.tracing.dto.MetricsResponse;
-import com.argusiq.tracing.dto.NamedMetricDto;
 import com.argusiq.tracing.service.MetricsService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -24,13 +27,16 @@ public class MetricsController {
         return metricsService.getMetrics();
     }
 
-    @GetMapping("/services")
-    public List<NamedMetricDto> getServiceMetrics() {
-        return metricsService.serviceMetrics();
-    }
-
     @GetMapping("/endpoints")
-    public List<NamedMetricDto> getEndpointMetrics() {
-        return metricsService.endpointMetrics();
+    public List<EndpointMetricDto> getEndpointMetrics(
+            @RequestParam(defaultValue = "traffic") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDirection,
+            @RequestParam(defaultValue = "100") int limit
+    ) {
+        try {
+            return metricsService.endpointMetrics(sortBy, sortDirection, limit);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
     }
 }

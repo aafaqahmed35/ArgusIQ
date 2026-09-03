@@ -3,8 +3,10 @@ package com.argusiq.tracing.service;
 import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
+import com.argusiq.tracing.event.TelemetryChangedEvent;
 import com.argusiq.tracing.mapper.OtlpMapper;
 import com.argusiq.tracing.repository.TraceRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +24,16 @@ public class OtlpTraceMergeService {
 
     private final TraceRepository traceRepository;
     private final OtlpMapper otlpMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public OtlpTraceMergeService(TraceRepository traceRepository, OtlpMapper otlpMapper) {
+    public OtlpTraceMergeService(
+            TraceRepository traceRepository,
+            OtlpMapper otlpMapper,
+            ApplicationEventPublisher eventPublisher
+    ) {
         this.traceRepository = traceRepository;
         this.otlpMapper = otlpMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -40,6 +48,7 @@ public class OtlpTraceMergeService {
 
         recomputeSummary(storedTrace, incomingTrace, previousRootSpanId);
         TraceEntity savedTrace = traceRepository.saveAndFlush(storedTrace);
+        eventPublisher.publishEvent(new TelemetryChangedEvent());
         return otlpMapper.mapToTraceResponseDto(savedTrace);
     }
 

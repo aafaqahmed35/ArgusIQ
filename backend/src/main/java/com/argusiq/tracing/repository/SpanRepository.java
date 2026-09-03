@@ -20,12 +20,6 @@ public interface SpanRepository extends JpaRepository<SpanEntity, Long> {
     @Query("select count(distinct s.serviceName) from SpanEntity s where s.traceId = :traceId")
     long countDistinctServicesByTraceId(@Param("traceId") String traceId);
 
-    @Query("select s.serviceName, count(s) from SpanEntity s group by s.serviceName order by count(s) desc")
-    List<Object[]> findMostActiveServices();
-
-    @Query("select s.name, s.serviceName, avg(s.durationMs), max(s.durationMs), count(s) from SpanEntity s group by s.name, s.serviceName order by avg(s.durationMs) desc")
-    List<Object[]> findMostExpensiveOperations();
-
     @Query("select distinct s.serviceName from SpanEntity s where s.traceId = :traceId and s.serviceName is not null")
     List<String> findDistinctServiceNamesByTraceId(@Param("traceId") String traceId);
 
@@ -39,24 +33,4 @@ public interface SpanRepository extends JpaRepository<SpanEntity, Long> {
             """)
     List<Object[]> findServiceDependencies();
 
-    @Query("""
-            select s.name, count(s)
-            from SpanEntity s
-            where s.serviceName = :serviceName and upper(s.statusCode) = 'ERROR'
-            group by s.name
-            order by count(s) desc
-            """)
-    List<Object[]> findMostCommonErrors(@Param("serviceName") String serviceName);
-
-    @Query("""
-            select s.name, count(s)
-            from SpanEntity s
-            where s.serviceName = :serviceName
-            group by s.name
-            order by count(s) desc
-            """)
-    List<Object[]> findTopOperations(@Param("serviceName") String serviceName);
-
-    @Query("select count(s) from SpanEntity s where s.serviceName = :serviceName and s.startTime >= :since")
-    long countByServiceSince(@Param("serviceName") String serviceName, @Param("since") LocalDateTime since);
 }

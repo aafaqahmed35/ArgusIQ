@@ -6,6 +6,7 @@ import com.argusiq.tracing.dto.TraceDetailResponseDto;
 import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
+import com.argusiq.tracing.event.TelemetryChangedEvent;
 import com.argusiq.tracing.mapper.OtlpMapper;
 import com.argusiq.tracing.repository.SpanRepository;
 import com.argusiq.tracing.repository.TraceRepository;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,19 +38,22 @@ public class TraceService {
     private final ServiceDiscoveryService serviceDiscoveryService;
     private final OtlpMapper otlpMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     public TraceService(
             TraceRepository traceRepository,
             SpanRepository spanRepository,
             ServiceDiscoveryService serviceDiscoveryService,
             OtlpMapper otlpMapper,
-            SimpMessagingTemplate messagingTemplate
+            SimpMessagingTemplate messagingTemplate,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.traceRepository = traceRepository;
         this.spanRepository = spanRepository;
         this.serviceDiscoveryService = serviceDiscoveryService;
         this.otlpMapper = otlpMapper;
         this.messagingTemplate = messagingTemplate;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -108,6 +113,7 @@ public class TraceService {
         trace.addSpan(rootSpan);
 
         TraceEntity saved = traceRepository.save(trace);
+        eventPublisher.publishEvent(new TelemetryChangedEvent());
         TraceResponseDto dto = otlpMapper.mapToTraceResponseDto(saved);
         messagingTemplate.convertAndSend(TRACE_TOPIC, dto);
         logger.info("Captured canonical HTTP trace traceId={} {} {}", traceId, httpMethod, requestUri);

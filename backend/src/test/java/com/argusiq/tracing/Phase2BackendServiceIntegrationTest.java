@@ -86,16 +86,16 @@ class Phase2BackendServiceIntegrationTest extends AbstractArgusIqIntegrationTest
     void metricsComputesLatencyPercentilesAndRates() {
         MetricsResponse metrics = metricsService.getMetrics();
 
-        assertEquals(3, metrics.getThroughput());
-        assertEquals(250.0, metrics.getAverageLatencyMs());
-        assertEquals(200.0, metrics.getMedianLatencyMs());
-        assertEquals(470.0, metrics.getP95LatencyMs(), 0.001);
-        assertEquals(50, metrics.getMinimumLatencyMs());
-        assertEquals(500, metrics.getMaximumLatencyMs());
-        assertEquals(100.0 / 3.0, metrics.getErrorRate(), 0.01);
-        assertEquals(2, metrics.getUniqueEndpoints());
-        assertEquals(1, metrics.getUniqueServices());
-        assertFalse(metrics.getStatusCodeDistribution().isEmpty());
+        assertEquals(3, metrics.totalTraces());
+        assertEquals(250.0, metrics.averageLatencyMs());
+        assertEquals(200.0, metrics.medianLatencyMs());
+        assertEquals(470.0, metrics.p95LatencyMs(), 0.001);
+        assertEquals(50, metrics.minimumLatencyMs());
+        assertEquals(500, metrics.maximumLatencyMs());
+        assertEquals(100.0 / 3.0, metrics.errorRate(), 0.01);
+        assertEquals(2, metrics.uniqueEndpoints());
+        assertEquals(2, metrics.uniqueServices());
+        assertFalse(metrics.statusCodeDistribution().isEmpty());
     }
 
     @Test
@@ -143,14 +143,14 @@ class Phase2BackendServiceIntegrationTest extends AbstractArgusIqIntegrationTest
     @Test
     void servicesExposeAnalyticsAndRecentActivity() {
         ServiceResponse service = servicesBackendService.getServices().stream()
-                .filter(item -> "gateway".equals(item.getServiceName()))
+                .filter(item -> "gateway".equals(item.serviceName()))
                 .findFirst()
                 .orElseThrow();
 
-        assertEquals(3, service.getRequestVolume());
-        assertTrue(service.getErrorRate() > 0.0);
-        assertFalse(service.getTopEndpoints().isEmpty());
-        assertTrue(servicesBackendService.getService(service.getId()).orElseThrow().getRecentTraces().size() >= 1);
+        assertEquals(3, service.requestCount());
+        assertTrue(service.errorRate() > 0.0);
+        assertFalse(service.topOperationsByTraffic().isEmpty());
+        assertTrue(servicesBackendService.getService(service.id()).orElseThrow().recentTraces().size() >= 1);
     }
 
     @Test

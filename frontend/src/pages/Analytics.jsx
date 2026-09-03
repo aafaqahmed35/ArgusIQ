@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/layout/PageHeader'
 import AnalyticsEndpointDetail from '../components/analytics/AnalyticsEndpointDetail'
 import AnalyticsSummaryStrip from '../components/analytics/AnalyticsSummaryStrip'
 import TopEndpointsPanel from '../components/analytics/TopEndpointsPanel'
-import { formatDuration, useTraceAnalytics } from '../hooks/useTraceAnalytics'
-import { useTraces } from '../hooks/useTraces'
-import { fetchMetrics } from '../services/traceApi'
+import { formatDuration } from '../lib/traceAggregation'
+import { fetchEndpointMetrics, fetchMetrics } from '../services/traceApi'
 import '../styles/dashboard.css'
 
 const SORT_FIELD = {
@@ -14,60 +13,83 @@ const SORT_FIELD = {
 }
 
 function Analytics() {
-  const { recentTraces, recentTraceLimit, isLoading, error, refreshRecentTraces } = useTraces()
-  const analytics = useTraceAnalytics(recentTraces)
   const [selectedEndpoint, setSelectedEndpoint] = useState(null)
   const [sortField, setSortField] = useState(SORT_FIELD.TRAFFIC)
   const [aggregateMetrics, setAggregateMetrics] = useState(null)
+  const [endpoints, setEndpoints] = useState([])
   const [isAggregateLoading, setIsAggregateLoading] = useState(true)
+  const [isEndpointLoading, setIsEndpointLoading] = useState(true)
   const [aggregateError, setAggregateError] = useState(null)
+  const [endpointError, setEndpointError] = useState(null)
+  const aggregateRequestId = useRef(0)
+  const endpointRequestId = useRef(0)
 
   const loadAggregateMetrics = useCallback(async () => {
+    const requestId = ++aggregateRequestId.current
     setIsAggregateLoading(true)
     setAggregateError(null)
 
     try {
-      setAggregateMetrics(await fetchMetrics())
+      const data = await fetchMetrics()
+      if (requestId === aggregateRequestId.current) {
+        setAggregateMetrics(data)
+      }
     } catch (requestError) {
-      setAggregateMetrics(null)
-      setAggregateError(requestError)
+      if (requestId === aggregateRequestId.current) {
+        setAggregateMetrics(null)
+        setAggregateError(requestError)
+      }
     } finally {
-      setIsAggregateLoading(false)
+      if (requestId === aggregateRequestId.current) {
+        setIsAggregateLoading(false)
+      }
     }
   }, [])
+
+  const loadEndpointMetrics = useCallback(async () => {
+    const requestId = ++endpointRequestId.current
+    setIsEndpointLoading(true)
+    setEndpointError(null)
+
+    try {
+      const data = await fetchEndpointMetrics({ sortBy: sortField })
+      if (requestId === endpointRequestId.current) {
+        setEndpoints(Array.isArray(data) ? data : [])
+      }
+    } catch (requestError) {
+      if (requestId === endpointRequestId.current) {
+        setEndpoints([])
+        setEndpointError(requestError)
+      }
+    } finally {
+      if (requestId === endpointRequestId.current) {
+        setIsEndpointLoading(false)
+      }
+    }
+  }, [sortField])
 
   useEffect(() => {
     queueMicrotask(loadAggregateMetrics)
   }, [loadAggregateMetrics])
 
+  useEffect(() => {
+    queueMicrotask(loadEndpointMetrics)
+  }, [loadEndpointMetrics])
+
   const handleRefresh = useCallback(async () => {
-    await Promise.all([refreshRecentTraces(), loadAggregateMetrics()])
-  }, [loadAggregateMetrics, refreshRecentTraces])
+    await Promise.all([loadAggregateMetrics(), loadEndpointMetrics()])
+  }, [loadAggregateMetrics, loadEndpointMetrics])
 
-  const sortedEndpoints = useMemo(() => {
-    const endpoints = [...analytics.endpoints]
+  const visibleSelectedEndpoint = useMemo(() => {
+    if (!selectedEndpoint) return null
+    return endpoints.find((endpoint) => endpoint.endpoint === selectedEndpoint.endpoint) ?? null
+  }, [endpoints, selectedEndpoint])
 
-    if (sortField === SORT_FIELD.LATENCY) {
-      return endpoints.sort((left, right) => {
-        const leftLatency = left.averageResponseTime ?? -1
-        const rightLatency = right.averageResponseTime ?? -1
-
-        return rightLatency - leftLatency || right.count - left.count || left.endpoint.localeCompare(right.endpoint)
-      })
-    }
-
-    return endpoints.sort(
-      (left, right) => right.count - left.count || left.endpoint.localeCompare(right.endpoint),
-    )
-  }, [analytics.endpoints, sortField])
-
-  const recentTraceCount = recentTraces.length
   const aggregateDetail = aggregateError ? 'Backend aggregate unavailable' : 'All persisted traces · 30 s cache'
-
   const summaryItems = [
     {
       label: 'Total Traces',
-      value: aggregateMetrics ? Number(aggregateMetrics.throughput).toLocaleString() : '—',
+      value: aggregateMetrics ? Number(aggregateMetrics.totalTraces).toLocaleString() : '—',
       detail: aggregateDetail,
     },
     {
@@ -87,18 +109,16 @@ function Analytics() {
     },
   ]
 
-  const sourceNote = `Recent endpoint sample: latest ${recentTraceCount.toLocaleString()} traces (limit ${recentTraceLimit})`
-
   return (
     <div className="analytics-workspace">
       <section className="analytics-workspace__header" aria-label="Analytics header">
         <PageHeader
           title="Analytics"
-          subtitle="Global summaries with a bounded recent endpoint drill-down."
-          isLoading={isLoading || isAggregateLoading}
+          subtitle="Persisted-history latency and traffic aggregates computed by PostgreSQL."
+          isLoading={isAggregateLoading || isEndpointLoading}
           onRefresh={handleRefresh}
           showConnectionStatus={false}
-          statusNote="Global aggregate + recent trace window"
+          statusNote="Global persisted-history aggregates"
         />
       </section>
 
@@ -106,19 +126,19 @@ function Analytics() {
 
       <section className="analytics-workspace__body" aria-label="Endpoint analytics">
         <TopEndpointsPanel
-          endpoints={sortedEndpoints}
-          isLoading={isLoading}
-          error={error}
-          selectedEndpoint={selectedEndpoint?.endpoint ?? null}
+          endpoints={endpoints}
+          isLoading={isEndpointLoading}
+          error={endpointError}
+          selectedEndpoint={visibleSelectedEndpoint?.endpoint ?? null}
           onEndpointSelect={setSelectedEndpoint}
           sortField={sortField}
           onSortFieldChange={setSortField}
-          sourceNote={sourceNote}
+          sourceNote="All persisted traces · maximum 100 ranked endpoints"
           formatDuration={formatDuration}
         />
         <AnalyticsEndpointDetail
-          endpoint={selectedEndpoint}
-          totalTraces={recentTraceCount}
+          endpoint={visibleSelectedEndpoint}
+          totalTraces={aggregateMetrics?.totalTraces ?? 0}
           formatDuration={formatDuration}
         />
       </section>

@@ -54,6 +54,23 @@ export async function fetchMetrics() {
   return response.data
 }
 
+export async function fetchEndpointMetrics({ sortBy = 'traffic', sortDirection = 'desc', limit = 100 } = {}) {
+  const response = await traceClient.get('/metrics/endpoints', {
+    params: { sortBy, sortDirection, limit },
+  })
+  return response.data
+}
+
+export async function fetchServices() {
+  const response = await traceClient.get('/services')
+  return response.data
+}
+
+export async function fetchService(serviceId) {
+  const response = await traceClient.get(`/services/${encodeURIComponent(serviceId)}`)
+  return response.data
+}
+
 export async function fetchHealth() {
   const response = await traceClient.get('/health')
   return response.data
