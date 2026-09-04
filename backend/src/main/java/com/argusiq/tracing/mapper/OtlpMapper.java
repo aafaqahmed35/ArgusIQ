@@ -1,5 +1,6 @@
 package com.argusiq.tracing.mapper;
 
+import com.argusiq.tracing.criticalpath.CriticalPathResult;
 import com.argusiq.tracing.dto.SpanDto;
 import com.argusiq.tracing.dto.TraceDetailResponseDto;
 import com.argusiq.tracing.dto.TraceMetadataDto;
@@ -144,6 +145,13 @@ public class OtlpMapper {
     }
 
     public TraceResponseDto mapToTraceResponseDto(TraceEntity traceEntity) {
+        return mapToTraceResponseDto(traceEntity, null);
+    }
+
+    private TraceResponseDto mapToTraceResponseDto(
+            TraceEntity traceEntity,
+            Long criticalPathDurationOverrideMs
+    ) {
         if (traceEntity == null) {
             return null;
         }
@@ -177,7 +185,9 @@ public class OtlpMapper {
                 serviceCount,
                 traceEntity.getStartTime(),
                 traceEntity.getRootSpanId(),
-                traceEntity.getCriticalPathDurationMs(),
+                criticalPathDurationOverrideMs != null
+                        ? criticalPathDurationOverrideMs
+                        : traceEntity.getCriticalPathDurationMs(),
                 traceEntity.getBusinessOperation(),
                 traceEntity.getEntryEndpoint(),
                 traceEntity.getExitStatus(),
@@ -186,12 +196,18 @@ public class OtlpMapper {
         );
     }
 
-    public TraceDetailResponseDto mapToTraceDetailResponseDto(TraceEntity traceEntity) {
+    public TraceDetailResponseDto mapToTraceDetailResponseDto(
+            TraceEntity traceEntity,
+            CriticalPathResult criticalPath
+    ) {
         if (traceEntity == null) {
             return null;
         }
 
-        TraceResponseDto summary = mapToTraceResponseDto(traceEntity);
+        TraceResponseDto summary = mapToTraceResponseDto(
+                traceEntity,
+                criticalPath != null ? criticalPath.totalDurationMs() : null
+        );
         List<SpanDto> spanDtos = traceEntity.getSpans() != null
                 ? traceEntity.getSpans().stream().map(this::mapToSpanDto).toList()
                 : List.of();
@@ -209,7 +225,7 @@ public class OtlpMapper {
                 resourceAttributes
         );
 
-        return new TraceDetailResponseDto(summary, spanDtos, metadata);
+        return new TraceDetailResponseDto(summary, spanDtos, metadata, criticalPath);
     }
 
     private void putObserved(Map<String, String> attributes, String key, String value, String excludedValue) {

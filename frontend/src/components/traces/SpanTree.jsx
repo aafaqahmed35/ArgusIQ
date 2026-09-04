@@ -46,7 +46,9 @@ function SpanTree({
     const nextSet = new Set(expandedIds)
     matchingSpanIds.forEach((spanId) => {
       let current = spanMap.get(spanId)
-      while (current && current.parentSpanId) {
+      const visited = new Set()
+      while (current && current.parentSpanId && !visited.has(current.spanId)) {
+        visited.add(current.spanId)
         nextSet.add(current.parentSpanId)
         current = spanMap.get(current.parentSpanId)
       }

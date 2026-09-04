@@ -208,10 +208,6 @@ public class OtlpIngestionService {
             logger.warn("Trace {} contains {} root SERVER spans; canonical root selected as {}", traceId, rootServerCount, otlpMapper.bytesToHex(rootSpan.getSpanId()));
         }
 
-        Span longestSpan = spans.stream()
-                .max(Comparator.comparingLong(s -> Math.max(0L, s.getEndTimeUnixNano() - s.getStartTimeUnixNano())))
-                .orElse(spans.get(0));
-
         String rootSpanName = (rootSpan.getName() != null && !rootSpan.getName().isEmpty()) ? rootSpan.getName() : "HTTP Request";
 
         List<KeyValue> spanAttrs = rootSpan.getAttributesList();
@@ -255,7 +251,6 @@ public class OtlpIngestionService {
         traceEntity.setBusinessOperation(businessOperation);
         traceEntity.setEntryEndpoint(requestUri);
         traceEntity.setExitStatus(exitStatus != null ? String.valueOf(exitStatus) : statusCode);
-        traceEntity.setCriticalPathDurationMs(Math.max(0L, (longestSpan.getEndTimeUnixNano() - longestSpan.getStartTimeUnixNano()) / 1_000_000L));
         traceEntity.setTimelineSummary(buildTimelineSummary(pendingSpans, durationMs));
         traceEntity.setEvidenceGraphId("trace:" + traceId);
         traceEntity.setEnvironment(rootPendingSpan.environment());

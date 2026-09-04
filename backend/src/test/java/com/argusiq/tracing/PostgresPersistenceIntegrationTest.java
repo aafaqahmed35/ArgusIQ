@@ -220,6 +220,7 @@ class PostgresPersistenceIntegrationTest extends AbstractPostgresIntegrationTest
         assertEquals(4, trace.getSpans().size());
         assertEquals(4, spanRepository.countByTraceId(TRACE_ID));
         assertEquals(1_000L, trace.getDurationMs());
+        assertEquals(1_000L, trace.getCriticalPathDurationMs());
         assertEquals("test", trace.getEnvironment());
     }
 

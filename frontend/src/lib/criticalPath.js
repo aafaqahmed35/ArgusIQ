@@ -1,102 +1,50 @@
 /**
- * Critical Path Engine for ArgusIQ.
- * Computes the longest sequential blocking chain from root to leaf spans
- * and identifies bottleneck services and operations.
+ * Adapts the backend's authoritative critical-path evidence to trace UI nodes.
+ * The browser intentionally does not reconstruct causality from span durations.
  */
+export function computeCriticalPath(treeData, criticalPathResult) {
+  const empty = {
+    status: null,
+    issues: [],
+    criticalPathSpanIds: new Set(),
+    criticalPathNodes: [],
+    totalCriticalPathMs: 0,
+    criticalPathPercentage: 0,
+    largestContributor: null,
+  }
 
-export function computeCriticalPath(treeData) {
-  const { rootNodes, totalDurationMs, spanMap } = treeData
+  if (!criticalPathResult) return empty
 
-  if (!rootNodes || rootNodes.length === 0) {
+  const evidence = Array.isArray(criticalPathResult.spans) ? criticalPathResult.spans : []
+  const criticalPathNodes = evidence.map((item) => {
+    const node = treeData.spanMap.get(item.spanId) || {}
     return {
-      criticalPathSpanIds: new Set(),
-      criticalPathNodes: [],
-      totalCriticalPathMs: 0,
-      criticalPathPercentage: 0,
-      slowestSpan: null,
-      slowestService: null,
-      bottleneckOperation: null,
-    }
-  }
-
-  // Helper to find the heaviest path down the tree recursively
-  function getHeaviestPath(node) {
-    if (!node.children || node.children.length === 0) {
-      return {
-        path: [node],
-        weight: node.durationMs || 0,
-      }
-    }
-
-    let heaviestChildPath = { path: [], weight: 0 }
-
-    for (const child of node.children) {
-      const childResult = getHeaviestPath(child)
-      if (childResult.weight > heaviestChildPath.weight) {
-        heaviestChildPath = childResult
-      }
-    }
-
-    return {
-      path: [node, ...heaviestChildPath.path],
-      weight: (node.durationMs || 0) + heaviestChildPath.weight,
-    }
-  }
-
-  // Find root node with maximum tree depth/weight
-  let maxPathResult = { path: [], weight: 0 }
-
-  for (const root of rootNodes) {
-    const res = getHeaviestPath(root)
-    if (res.weight > maxPathResult.weight) {
-      maxPathResult = res
-    }
-  }
-
-  const criticalPathNodes = maxPathResult.path
-  const criticalPathSpanIds = new Set(criticalPathNodes.map((n) => n.spanId))
-
-  // Find slowest individual span in the entire trace
-  let slowestSpan = null
-  let maxSpanDuration = -1
-
-  spanMap.forEach((node) => {
-    if (node.durationMs > maxSpanDuration) {
-      maxSpanDuration = node.durationMs
-      slowestSpan = node
+      ...node,
+      ...item,
+      name: item.operationName || node.name || 'unnamed-span',
+      durationMs: item.durationMs ?? node.durationMs ?? 0,
+      contributionDurationMs: item.contributionDurationMs ?? 0,
     }
   })
-
-  // Compute per-service aggregate duration to find bottleneck service
-  const serviceDurations = new Map()
-  spanMap.forEach((node) => {
-    const sName = node.serviceName || 'Unknown Service'
-    const current = serviceDurations.get(sName) || 0
-    serviceDurations.set(sName, current + node.durationMs)
-  })
-
-  let slowestService = 'None'
-  let maxServiceDur = -1
-
-  serviceDurations.forEach((dur, service) => {
-    if (dur > maxServiceDur) {
-      maxServiceDur = dur
-      slowestService = service
-    }
-  })
-
-  const totalCriticalPathMs = maxPathResult.weight
-  const criticalPathPercentage = totalDurationMs > 0
-    ? Math.min(100, Math.round((totalCriticalPathMs / totalDurationMs) * 100))
+  const criticalPathSpanIds = new Set(criticalPathNodes.map((node) => node.spanId))
+  const totalCriticalPathMs = Number(criticalPathResult.totalDurationMs) || 0
+  const wallClockMs = Number(criticalPathResult.traceWallClockDurationMs) || treeData.totalDurationMs || 0
+  const criticalPathPercentage = wallClockMs > 0
+    ? Math.min(100, Math.round((totalCriticalPathMs / wallClockMs) * 100))
     : 0
+  const largestContributor = criticalPathNodes.reduce(
+    (largest, node) => !largest || node.contributionDurationMs > largest.contributionDurationMs ? node : largest,
+    null
+  )
 
   return {
+    status: criticalPathResult.status || 'UNAVAILABLE',
+    issues: Array.isArray(criticalPathResult.issues) ? criticalPathResult.issues : [],
+    algorithm: criticalPathResult.algorithm,
     criticalPathSpanIds,
     criticalPathNodes,
     totalCriticalPathMs,
     criticalPathPercentage,
-    slowestSpan,
-    slowestService,
-    bottleneckOperation: slowestSpan ? slowestSpan.name : 'N/A',
+    largestContributor,
   }
 }

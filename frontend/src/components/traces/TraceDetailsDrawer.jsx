@@ -147,7 +147,10 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
   // Construct Tree & Critical Path
   const treeData = useMemo(() => buildSpanTree(spans, summary), [spans, summary])
-  const criticalPathInfo = useMemo(() => computeCriticalPath(treeData), [treeData])
+  const criticalPathInfo = useMemo(
+    () => computeCriticalPath(treeData, effectiveFullTraceDetail?.criticalPath),
+    [treeData, effectiveFullTraceDetail]
+  )
 
   const availableServices = useMemo(() => {
     const set = new Set(spans.map((s) => s.serviceName || serviceName))

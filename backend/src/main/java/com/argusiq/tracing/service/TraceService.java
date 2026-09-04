@@ -1,5 +1,6 @@
 package com.argusiq.tracing.service;
 
+import com.argusiq.tracing.criticalpath.TraceCriticalPathCalculator;
 import com.argusiq.tracing.dto.AverageResponseTimeDto;
 import com.argusiq.tracing.dto.TraceCountDto;
 import com.argusiq.tracing.dto.TraceDetailResponseDto;
@@ -39,6 +40,7 @@ public class TraceService {
     private final OtlpMapper otlpMapper;
     private final SimpMessagingTemplate messagingTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final TraceCriticalPathCalculator criticalPathCalculator;
 
     public TraceService(
             TraceRepository traceRepository,
@@ -46,7 +48,8 @@ public class TraceService {
             ServiceDiscoveryService serviceDiscoveryService,
             OtlpMapper otlpMapper,
             SimpMessagingTemplate messagingTemplate,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            TraceCriticalPathCalculator criticalPathCalculator
     ) {
         this.traceRepository = traceRepository;
         this.spanRepository = spanRepository;
@@ -54,6 +57,7 @@ public class TraceService {
         this.otlpMapper = otlpMapper;
         this.messagingTemplate = messagingTemplate;
         this.eventPublisher = eventPublisher;
+        this.criticalPathCalculator = criticalPathCalculator;
     }
 
     @Transactional
@@ -145,15 +149,22 @@ public class TraceService {
         String cleanedTraceId = traceId.trim();
         Optional<TraceEntity> trace = traceRepository.findByTraceIdWithSpans(cleanedTraceId);
         if (trace.isPresent()) {
-            return trace.map(otlpMapper::mapToTraceDetailResponseDto);
+            return trace.map(this::toTraceDetail);
         }
 
         try {
             return traceRepository.findById(Long.parseLong(cleanedTraceId))
-                    .map(otlpMapper::mapToTraceDetailResponseDto);
+                    .map(this::toTraceDetail);
         } catch (NumberFormatException ignored) {
             return Optional.empty();
         }
+    }
+
+    private TraceDetailResponseDto toTraceDetail(TraceEntity trace) {
+        return otlpMapper.mapToTraceDetailResponseDto(
+                trace,
+                criticalPathCalculator.calculate(trace.getSpans(), trace.getRootSpanId())
+        );
     }
 
     @Transactional(readOnly = true)

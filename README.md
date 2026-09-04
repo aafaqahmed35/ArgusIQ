@@ -92,6 +92,40 @@ latest service observation: `firstSeen` is the earliest span start, `lastSeen` i
 the latest span end, missing metadata never erases known values, and newer
 observed nonblank metadata supersedes older values.
 
+#### Critical-path semantics
+
+ArgusIQ distinguishes five latency measures:
+
+- **Trace wall-clock duration** is the envelope from the earliest valid span
+  start to the latest valid span end, including gaps and disconnected components.
+- **Sum of span durations** adds every span independently and can double-count
+  nested or concurrent work. It is diagnostic context, not trace latency.
+- **Longest individual span** is only the maximum span interval. It is not a
+  distributed-trace critical path.
+- **Span self-time** is a span interval minus the union of its validated direct
+  child intervals. It is never negative and does not double-count overlapping
+  children.
+- **Critical-path duration** is the sum of self-time on the canonical root
+  component plus the maximum-duration set of non-overlapping, causally linked
+  child paths. Sequential siblings can contribute; overlapping siblings compete
+  through deterministic weighted interval scheduling. Equal-weight alternatives
+  retain the earlier-ending schedule, with start time and span ID ordering any
+  remaining ties.
+
+The persisted `critical_path_duration_ms` is recomputed from the complete stored
+span union on every idempotent OTLP merge. Trace detail derives structured
+evidence from the same deterministic algorithm: quality (`COMPLETE`, `PARTIAL`,
+or `UNAVAILABLE`), graph limitations, and ordered contributing spans with span
+duration, self-time, and critical contribution. Missing parents, multiple roots,
+out-of-bounds children, malformed timestamps, duplicate identities, disconnected
+components, and cycles are never silently converted into causal edges. A valid
+canonical component may produce `PARTIAL` evidence; otherwise the result is
+`UNAVAILABLE`. This avoids a schema migration while keeping the summary scalar
+queryable and the detailed evidence reproducible from persisted spans.
+
+The computation loads spans for one trace, performs no per-span repository
+queries, uses iterative graph walks, and runs in O(n log n) time and O(n) space.
+
 #### Metrics semantics
 
 Global analytics are aggregates over persisted traces. `totalTraces` is a count,

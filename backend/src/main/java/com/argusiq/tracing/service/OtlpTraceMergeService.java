@@ -1,5 +1,7 @@
 package com.argusiq.tracing.service;
 
+import com.argusiq.tracing.criticalpath.CriticalPathResult;
+import com.argusiq.tracing.criticalpath.TraceCriticalPathCalculator;
 import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
@@ -25,15 +27,18 @@ public class OtlpTraceMergeService {
     private final TraceRepository traceRepository;
     private final OtlpMapper otlpMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final TraceCriticalPathCalculator criticalPathCalculator;
 
     public OtlpTraceMergeService(
             TraceRepository traceRepository,
             OtlpMapper otlpMapper,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            TraceCriticalPathCalculator criticalPathCalculator
     ) {
         this.traceRepository = traceRepository;
         this.otlpMapper = otlpMapper;
         this.eventPublisher = eventPublisher;
+        this.criticalPathCalculator = criticalPathCalculator;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -97,12 +102,6 @@ public class OtlpTraceMergeService {
                 .orElse(rootSpan.getEndTime());
         long durationMs = Math.max(0L, Duration.between(startTime, endTime).toMillis());
         boolean hasError = spans.stream().anyMatch(span -> "ERROR".equalsIgnoreCase(span.getStatusCode()));
-        long longestSpanMs = spans.stream()
-                .map(SpanEntity::getDurationMs)
-                .filter(value -> value != null)
-                .mapToLong(Long::longValue)
-                .max()
-                .orElse(0L);
 
         boolean incomingDefinesRoot = rootSpan.getSpanId().equals(incomingTrace.getRootSpanId());
         boolean previousRootStillCanonical = rootSpan.getSpanId().equals(previousRootSpanId);
@@ -137,7 +136,8 @@ public class OtlpTraceMergeService {
         trace.setExitStatus(rootSpan.getHttpStatusCode() != null
                 ? String.valueOf(rootSpan.getHttpStatusCode())
                 : trace.getStatusCode());
-        trace.setCriticalPathDurationMs(longestSpanMs);
+        CriticalPathResult criticalPath = criticalPathCalculator.calculate(spans, rootSpan.getSpanId());
+        trace.setCriticalPathDurationMs(criticalPath.totalDurationMs());
         trace.setTimelineSummary(spans.size() + " spans across " + serviceCount(spans) + " services in " + durationMs + "ms");
         trace.setEvidenceGraphId("trace:" + trace.getTraceId());
         mergeResourceMetadata(trace, incomingTrace, rootSpan, incomingDefinesRoot, canonicalRootChanged);
