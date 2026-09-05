@@ -69,7 +69,7 @@ public class TraceCriticalPathCalculator {
                 issues.add("MISSING_SPAN_ID");
                 continue;
             }
-            if (!validInterval(span)) {
+            if (!TraceStructuralEvidence.validInterval(span)) {
                 issues.add("MALFORMED_SPAN_TIMESTAMPS");
                 continue;
             }
@@ -101,7 +101,10 @@ public class TraceCriticalPathCalculator {
             return unavailable(metrics.wallClockMs(), metrics.sumMs(), metrics.longestMs(), issues);
         }
 
-        Set<String> cycleIds = findCycleIds(nodesById);
+        Set<String> cycleIds = TraceStructuralEvidence.cycleSpanIds(
+                nodesById.values().stream().map(Node::span).toList()
+        );
+        Map<String, String> validatedParentSpanIds = TraceStructuralEvidence.validatedParentSpanIds(spans);
         if (!cycleIds.isEmpty()) {
             issues.add("CYCLIC_PARENT_GRAPH");
         }
@@ -125,7 +128,7 @@ public class TraceCriticalPathCalculator {
                 issues.add(nodesById.containsKey(child.parentId()) ? "CYCLIC_PARENT_GRAPH" : "MISSING_PARENT");
                 continue;
             }
-            if (!containedBy(child, parent)) {
+            if (!parent.id().equals(validatedParentSpanIds.get(child.id()))) {
                 issues.add("CHILD_OUTSIDE_PARENT_BOUNDS");
                 continue;
             }
@@ -225,34 +228,6 @@ public class TraceCriticalPathCalculator {
             }
         }
         return order;
-    }
-
-    private static Set<String> findCycleIds(Map<String, Node> nodesById) {
-        Set<String> processed = new HashSet<>();
-        Set<String> cycleIds = new HashSet<>();
-        List<Node> ordered = nodesById.values().stream().sorted(Comparator.comparing(Node::id)).toList();
-        for (Node start : ordered) {
-            if (processed.contains(start.id())) {
-                continue;
-            }
-            List<Node> path = new ArrayList<>();
-            Map<String, Integer> position = new HashMap<>();
-            Node current = start;
-            while (current != null && !processed.contains(current.id())) {
-                Integer cycleStart = position.get(current.id());
-                if (cycleStart != null) {
-                    for (int index = cycleStart; index < path.size(); index++) {
-                        cycleIds.add(path.get(index).id());
-                    }
-                    break;
-                }
-                position.put(current.id(), path.size());
-                path.add(current);
-                current = noParent(current) ? null : nodesById.get(current.parentId());
-            }
-            path.forEach(node -> processed.add(node.id()));
-        }
-        return cycleIds;
     }
 
     private static List<Node> selectNonOverlappingChildren(List<Node> children, Map<String, PathValue> pathBySpanId) {
@@ -368,16 +343,6 @@ public class TraceCriticalPathCalculator {
                 selfTimeMs,
                 selfTimeMs
         );
-    }
-
-    private static boolean validInterval(SpanEntity span) {
-        return span.getStartTime() != null
-                && span.getEndTime() != null
-                && !span.getEndTime().isBefore(span.getStartTime());
-    }
-
-    private static boolean containedBy(Node child, Node parent) {
-        return !child.start().isBefore(parent.start()) && !child.end().isAfter(parent.end());
     }
 
     private static boolean noParent(Node node) {

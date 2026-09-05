@@ -125,6 +125,55 @@ queryable and the detailed evidence reproducible from persisted spans.
 
 The computation loads spans for one trace, performs no per-span repository
 queries, uses iterative graph walks, and runs in O(n log n) time and O(n) space.
+`INTERVAL_AWARE_CAUSAL_V1` is a structural, conservative latency model. Parent
+identifiers and timestamps do not prove synchronous waiting or the exact cause
+of observed latency.
+
+#### Trace explanation semantics
+
+Trace detail derives a deterministic `explanation` from the same persisted span
+snapshot and `CriticalPathResult` used by the response. Explanation prose is not
+persisted, no external model is called, and findings report evidence worth
+investigating rather than asserting a root cause.
+
+Explanation status describes graph evaluability, not causal completeness:
+
+- `COMPLETE` means the engine evaluated the available valid structural trace
+  snapshot without graph-integrity limitations. It does not mean complete
+  root-cause analysis, complete causal knowledge, or an explanation of every
+  source of latency;
+- `PARTIAL` means a valid canonical component was evaluated with listed
+  graph-integrity limitations; and
+- `INSUFFICIENT_EVIDENCE` means no valid canonical structural path was available.
+
+The deliberately small V1 rule set is:
+
+- a critical-path contribution is concentrated when a trace has at least two
+  selected spans and one contributes at least 100 ms and 50% of the structural
+  path;
+- an observed `ERROR` status or HTTP 5xx on a selected span is reported directly;
+- an observed error outside the selected path remains directly observable, but
+  is reported as downstream only when its parent identity and interval form an
+  accepted, cycle-free structural edge;
+- the strongest selected parent/child service transition is reported only for
+  an accepted structural edge when the child contributes at least 100 ms and
+  20% of the structural path;
+- large exclusive time requires at least 250 ms and 40% of the structural path
+  in a path containing at least two selected spans;
+- overlapping direct-child work is informational only when the validated
+  overlap is at least 100 ms and 20% of trace wall-clock time; and
+- `PARTIAL` or `UNAVAILABLE` structural evidence produces an explicit limitation
+  finding with readable graph issues.
+
+Evidence strength measures support for the stated observation, not the
+probability that it caused an incident. Directly observed error/status and
+complete selected-path contribution evidence is `HIGH` strength. Relationships
+and exclusive/overlap timing derived from a complete structural graph are
+`MEDIUM`. Structural interpretations from a partial graph and all insufficiency
+findings are `LOW`. Finding order is stable: selected-path errors, directly
+observed off-path errors, downstream errors, concentration, cross-service
+evidence, exclusive time, overlap, then graph limitations. `UNAVAILABLE`
+structural paths never produce path-based findings.
 
 #### Metrics semantics
 

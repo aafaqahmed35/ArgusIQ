@@ -4,6 +4,8 @@ import com.argusiq.AbstractArgusIqIntegrationTest;
 import com.argusiq.tracing.criticalpath.CriticalPathSpanContribution;
 import com.argusiq.tracing.dto.TraceDetailResponseDto;
 import com.argusiq.tracing.entity.TraceEntity;
+import com.argusiq.tracing.explanation.TraceExplanation;
+import com.argusiq.tracing.explanation.TraceFinding;
 import com.argusiq.tracing.repository.MonitoredServiceRepository;
 import com.argusiq.tracing.repository.TraceRepository;
 import com.argusiq.tracing.service.OtlpIngestionService;
@@ -27,6 +29,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 class CriticalPathIngestionIntegrationTest extends AbstractArgusIqIntegrationTest {
@@ -61,6 +64,8 @@ class CriticalPathIngestionIntegrationTest extends AbstractArgusIqIntegrationTes
                 span(INCREMENTAL_TRACE, 2, 1L, 50, 200, "short-early")
         );
         assertEquals(1_000, load(INCREMENTAL_TRACE).getCriticalPathDurationMs());
+        TraceExplanation initialExplanation = traceService.getTraceByTraceId(traceId(INCREMENTAL_TRACE))
+                .orElseThrow().getExplanation();
 
         byte[] secondBatch = payload(span(INCREMENTAL_TRACE, 3, 1L, 100, 700, "dominant"));
         ingestionService.ingestProtobufTraces(secondBatch);
@@ -78,12 +83,23 @@ class CriticalPathIngestionIntegrationTest extends AbstractArgusIqIntegrationTes
         assertEquals(List.of(350L, 600L), detail.getCriticalPath().spans().stream()
                 .map(CriticalPathSpanContribution::contributionDurationMs)
                 .toList());
+        assertTrue(detail.getExplanation().findings().stream()
+                .filter(finding -> "CRITICAL_PATH_CONCENTRATION".equals(finding.code()))
+                .flatMap(finding -> finding.evidence().stream())
+                .anyMatch(evidence -> spanId(3).equals(evidence.spanId())));
+        assertTrue(!initialExplanation.equals(detail.getExplanation()));
+        assertTrue(detail.getExplanation().findings().stream()
+                .flatMap(finding -> finding.evidence().stream())
+                .filter(evidence -> evidence.spanId() != null)
+                .allMatch(evidence -> detail.getSpans().stream()
+                        .anyMatch(span -> evidence.spanId().equals(span.getSpanId()))));
 
         ingestionService.ingestProtobufTraces(secondBatch);
 
         TraceDetailResponseDto afterRetry = traceService.getTraceByTraceId(traceId(INCREMENTAL_TRACE)).orElseThrow();
         assertEquals(3, load(INCREMENTAL_TRACE).getSpans().size());
         assertEquals(detail.getCriticalPath(), afterRetry.getCriticalPath());
+        assertEquals(detail.getExplanation(), afterRetry.getExplanation());
     }
 
     @Test
@@ -91,8 +107,9 @@ class CriticalPathIngestionIntegrationTest extends AbstractArgusIqIntegrationTes
         Span outOfOrderEarly = span(OUT_OF_ORDER_TRACE, 2, 1L, 50, 200, "short-early");
         Span outOfOrderDominant = span(OUT_OF_ORDER_TRACE, 3, 1L, 100, 700, "dominant");
         ingest(outOfOrderEarly, outOfOrderDominant);
-        assertEquals("PARTIAL", traceService.getTraceByTraceId(traceId(OUT_OF_ORDER_TRACE))
-                .orElseThrow().getCriticalPath().status().name());
+        TraceDetailResponseDto provisional = traceService.getTraceByTraceId(traceId(OUT_OF_ORDER_TRACE)).orElseThrow();
+        assertEquals("PARTIAL", provisional.getCriticalPath().status().name());
+        assertEquals(TraceExplanation.Status.PARTIAL, provisional.getExplanation().status());
         ingest(span(OUT_OF_ORDER_TRACE, 1, null, 0, 1_000, "root"));
 
         ingest(
@@ -107,6 +124,9 @@ class CriticalPathIngestionIntegrationTest extends AbstractArgusIqIntegrationTes
         assertEquals(oneShot.getCriticalPath().totalDurationMs(), outOfOrder.getCriticalPath().totalDurationMs());
         assertEquals(oneShot.getCriticalPath().spans().stream().map(CriticalPathSpanContribution::contributionDurationMs).toList(),
                 outOfOrder.getCriticalPath().spans().stream().map(CriticalPathSpanContribution::contributionDurationMs).toList());
+        assertEquals(oneShot.getExplanation(), outOfOrder.getExplanation());
+        assertEquals(List.of("CRITICAL_PATH_CONCENTRATION", "LARGE_EXCLUSIVE_TIME"),
+                outOfOrder.getExplanation().findings().stream().map(TraceFinding::code).toList());
         assertEquals(950, load(OUT_OF_ORDER_TRACE).getCriticalPathDurationMs());
         assertEquals(950, load(ONE_SHOT_TRACE).getCriticalPathDurationMs());
     }

@@ -7,6 +7,7 @@ import com.argusiq.tracing.dto.TraceMetadataDto;
 import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
+import com.argusiq.tracing.explanation.TraceExplanation;
 import com.google.protobuf.ByteString;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.trace.v1.Span;
@@ -145,18 +146,23 @@ public class OtlpMapper {
     }
 
     public TraceResponseDto mapToTraceResponseDto(TraceEntity traceEntity) {
-        return mapToTraceResponseDto(traceEntity, null);
+        return mapToTraceResponseDto(
+                traceEntity,
+                traceEntity != null ? traceEntity.getSpans() : null,
+                null
+        );
     }
 
     private TraceResponseDto mapToTraceResponseDto(
             TraceEntity traceEntity,
+            List<SpanEntity> spanSnapshot,
             Long criticalPathDurationOverrideMs
     ) {
         if (traceEntity == null) {
             return null;
         }
 
-        List<SpanEntity> spans = traceEntity.getSpans();
+        List<SpanEntity> spans = spanSnapshot;
         int spanCount = (spans != null && !spans.isEmpty()) ? spans.size() : 1;
         int errorSpanCount = (spans != null && !spans.isEmpty())
                 ? (int) spans.stream().filter(s -> "ERROR".equalsIgnoreCase(s.getStatusCode())).count()
@@ -198,7 +204,9 @@ public class OtlpMapper {
 
     public TraceDetailResponseDto mapToTraceDetailResponseDto(
             TraceEntity traceEntity,
-            CriticalPathResult criticalPath
+            List<SpanEntity> spanSnapshot,
+            CriticalPathResult criticalPath,
+            TraceExplanation explanation
     ) {
         if (traceEntity == null) {
             return null;
@@ -206,10 +214,11 @@ public class OtlpMapper {
 
         TraceResponseDto summary = mapToTraceResponseDto(
                 traceEntity,
+                spanSnapshot,
                 criticalPath != null ? criticalPath.totalDurationMs() : null
         );
-        List<SpanDto> spanDtos = traceEntity.getSpans() != null
-                ? traceEntity.getSpans().stream().map(this::mapToSpanDto).toList()
+        List<SpanDto> spanDtos = spanSnapshot != null
+                ? spanSnapshot.stream().map(this::mapToSpanDto).toList()
                 : List.of();
 
         Map<String, String> resourceAttributes = new LinkedHashMap<>();
@@ -225,7 +234,7 @@ public class OtlpMapper {
                 resourceAttributes
         );
 
-        return new TraceDetailResponseDto(summary, spanDtos, metadata, criticalPath);
+        return new TraceDetailResponseDto(summary, spanDtos, metadata, criticalPath, explanation);
     }
 
     private void putObserved(Map<String, String> attributes, String key, String value, String excludedValue) {

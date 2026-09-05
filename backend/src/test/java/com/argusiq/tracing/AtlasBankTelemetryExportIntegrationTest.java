@@ -181,6 +181,10 @@ class AtlasBankTelemetryExportIntegrationTest extends AbstractArgusIqIntegration
                 .andExpect(jsonPath("$.metadata.environment").value("production"))
                 .andExpect(jsonPath("$.metadata.serviceVersion").value("2.4.0"))
                 .andExpect(jsonPath("$.metadata.sdkLanguage").value("java"))
-                .andExpect(jsonPath("$.metadata.resourceAttributes['service.name']").value("AtlasBank"));
+                .andExpect(jsonPath("$.metadata.resourceAttributes['service.name']").value("AtlasBank"))
+                .andExpect(jsonPath("$.criticalPath.status").value("COMPLETE"))
+                .andExpect(jsonPath("$.explanation.status").value("COMPLETE"))
+                .andExpect(jsonPath("$.explanation.summary").isString())
+                .andExpect(jsonPath("$.explanation.limitations[0].code").value("STRUCTURAL_MODEL_ONLY"));
     }
 }

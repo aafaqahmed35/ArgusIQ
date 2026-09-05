@@ -8,6 +8,7 @@ import TraceMetadataGrid from './TraceMetadataGrid'
 import SpanTree from './SpanTree'
 import SpanWaterfall from './SpanWaterfall'
 import CriticalPathBanner from './CriticalPathBanner'
+import InvestigationFindings from './InvestigationFindings'
 import SpanInspector from './SpanInspector'
 import InvestigationTimeline from './InvestigationTimeline'
 import MiniTraceMap from './MiniTraceMap'
@@ -202,6 +203,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
       case 'overview':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
+            <InvestigationFindings explanation={effectiveFullTraceDetail?.explanation} />
             <CriticalPathBanner criticalPathInfo={criticalPathInfo} />
             <TraceDetailSection title="Request Information">
               <TraceMetadataGrid

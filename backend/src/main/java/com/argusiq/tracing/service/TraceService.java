@@ -1,6 +1,7 @@
 package com.argusiq.tracing.service;
 
 import com.argusiq.tracing.criticalpath.TraceCriticalPathCalculator;
+import com.argusiq.tracing.criticalpath.CriticalPathResult;
 import com.argusiq.tracing.dto.AverageResponseTimeDto;
 import com.argusiq.tracing.dto.TraceCountDto;
 import com.argusiq.tracing.dto.TraceDetailResponseDto;
@@ -8,6 +9,8 @@ import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
 import com.argusiq.tracing.event.TelemetryChangedEvent;
+import com.argusiq.tracing.explanation.TraceExplanation;
+import com.argusiq.tracing.explanation.TraceExplanationEngine;
 import com.argusiq.tracing.mapper.OtlpMapper;
 import com.argusiq.tracing.repository.SpanRepository;
 import com.argusiq.tracing.repository.TraceRepository;
@@ -41,6 +44,7 @@ public class TraceService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final TraceCriticalPathCalculator criticalPathCalculator;
+    private final TraceExplanationEngine explanationEngine;
 
     public TraceService(
             TraceRepository traceRepository,
@@ -49,7 +53,8 @@ public class TraceService {
             OtlpMapper otlpMapper,
             SimpMessagingTemplate messagingTemplate,
             ApplicationEventPublisher eventPublisher,
-            TraceCriticalPathCalculator criticalPathCalculator
+            TraceCriticalPathCalculator criticalPathCalculator,
+            TraceExplanationEngine explanationEngine
     ) {
         this.traceRepository = traceRepository;
         this.spanRepository = spanRepository;
@@ -58,6 +63,7 @@ public class TraceService {
         this.messagingTemplate = messagingTemplate;
         this.eventPublisher = eventPublisher;
         this.criticalPathCalculator = criticalPathCalculator;
+        this.explanationEngine = explanationEngine;
     }
 
     @Transactional
@@ -161,9 +167,14 @@ public class TraceService {
     }
 
     private TraceDetailResponseDto toTraceDetail(TraceEntity trace) {
+        List<SpanEntity> spanSnapshot = List.copyOf(trace.getSpans());
+        CriticalPathResult criticalPath = criticalPathCalculator.calculate(spanSnapshot, trace.getRootSpanId());
+        TraceExplanation explanation = explanationEngine.explain(spanSnapshot, criticalPath);
         return otlpMapper.mapToTraceDetailResponseDto(
                 trace,
-                criticalPathCalculator.calculate(trace.getSpans(), trace.getRootSpanId())
+                spanSnapshot,
+                criticalPath,
+                explanation
         );
     }
 

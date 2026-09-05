@@ -35,7 +35,7 @@ function CriticalPathBanner({ criticalPathInfo }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ fontSize: '1.2rem', color: '#D4AF37' }}>⚡</span>
           <strong style={{ fontSize: '0.95rem', color: '#D4AF37', letterSpacing: '0.02em' }}>
-            Causal Critical Path
+            Structural Critical Path
           </strong>
         </div>
         <span
@@ -55,7 +55,7 @@ function CriticalPathBanner({ criticalPathInfo }) {
 
       {isUnavailable ? (
         <div style={{ color: '#FBBF24', fontSize: '0.82rem' }}>
-          A trustworthy causal path cannot be derived from this trace graph.
+          A complete structural path cannot be derived from this trace graph.
         </div>
       ) : (
         <div
@@ -81,6 +81,10 @@ function CriticalPathBanner({ criticalPathInfo }) {
           Limitations: {issues.map(readableIssue).join(', ')}
         </div>
       )}
+
+      <div style={{ color: '#94A3B8', fontSize: '0.72rem' }}>
+        Parent links and timestamps provide structural evidence; they do not prove synchronous blocking.
+      </div>
 
       {criticalPathNodes.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
