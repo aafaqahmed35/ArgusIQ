@@ -107,9 +107,9 @@ class SecurityBoundaryIntegrationTest extends AbstractArgusIqIntegrationTest {
 
     @Test
     void investigationMutationsRequireCsrfProtection() throws Exception {
-        String request = "{\"title\":\"Security boundary test\"}";
+        String request = "{\"name\":\"Security boundary test\",\"type\":\"TRACE_ERROR\",\"severity\":\"WARNING\"}";
 
-        mockMvc.perform(post("/api/v1/alerts")
+        mockMvc.perform(post("/api/v1/alerts/rules")
                         .with(httpBasic(INVESTIGATION_USERNAME, INVESTIGATION_PASSWORD))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
@@ -135,7 +135,7 @@ class SecurityBoundaryIntegrationTest extends AbstractArgusIqIntegrationTest {
 
         HttpResponse<Void> mutation = HttpClient.newHttpClient().send(
                 HttpRequest.newBuilder()
-                        .uri(URI.create("http://localhost:" + serverPort + "/api/v1/alerts"))
+                        .uri(URI.create("http://localhost:" + serverPort + "/api/v1/alerts/rules"))
                         .header("Authorization", investigationAuthorization())
                         .header("Cookie", csrfCookie)
                         .header("X-XSRF-TOKEN", csrfToken)

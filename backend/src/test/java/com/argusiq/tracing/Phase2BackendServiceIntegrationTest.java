@@ -1,8 +1,6 @@
 package com.argusiq.tracing;
 
 import com.argusiq.AbstractArgusIqIntegrationTest;
-import com.argusiq.tracing.dto.AlertRequest;
-import com.argusiq.tracing.dto.AlertResponse;
 import com.argusiq.tracing.dto.AlertRuleRequest;
 import com.argusiq.tracing.dto.MetricsResponse;
 import com.argusiq.tracing.dto.PageResponse;
@@ -73,8 +71,8 @@ class Phase2BackendServiceIntegrationTest extends AbstractArgusIqIntegrationTest
 
     @BeforeEach
     void setup() {
-        alertRuleRepository.deleteAll();
         alertRepository.deleteAll();
+        alertRuleRepository.deleteAll();
         savedSearchRepository.deleteAll();
         traceRepository.deleteAll();
         serviceRepository.deleteAll();
@@ -161,36 +159,18 @@ class Phase2BackendServiceIntegrationTest extends AbstractArgusIqIntegrationTest
     }
 
     @Test
-    void alertsSupportCrudAndResolutionState() {
-        AlertRequest request = new AlertRequest();
-        request.setType("HIGH_LATENCY");
-        request.setSeverity("CRITICAL");
-        request.setTitle("Customer endpoint slow");
-        request.setRelatedTrace("trace-error");
-        request.setRelatedService("gateway");
-
-        AlertResponse created = alertService.createAlert(request);
-        assertEquals("OPEN", created.getStatus());
-
-        AlertRequest update = new AlertRequest();
-        update.setStatus("RESOLVED");
-        update.setAcknowledged(true);
-        AlertResponse resolved = alertService.updateAlert(created.getAlertId(), update).orElseThrow();
-        assertTrue(resolved.isAcknowledged());
-        assertNotNull(resolved.getResolvedTime());
-        assertTrue(alertService.deleteAlert(created.getAlertId()));
-    }
-
-    @Test
-    void alertRulesPersistSchedulerInputs() {
+    void alertRulesPersistEvaluationInputs() {
         AlertRuleRequest request = new AlertRuleRequest();
-        request.setType("ERROR_RATE_SPIKE");
+        request.setName("Gateway error rate");
+        request.setType("ERROR_RATE_THRESHOLD");
+        request.setSeverity("WARNING");
         request.setThreshold(5.0);
         request.setWindowSeconds(600L);
-        request.setComparator("GREATER_THAN");
+        request.setMinimumSamples(10L);
+        request.setComparator("GREATER_THAN_OR_EQUAL");
         request.setEnabled(true);
 
-        assertEquals("ERROR_RATE_SPIKE", alertService.createRule(request).getType());
+        assertEquals("ERROR_RATE_THRESHOLD", alertService.createRule(request).type());
         assertEquals(1, alertService.getRules().size());
     }
 

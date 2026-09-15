@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import { parseBackendUtcTimestamp } from '../../lib/backendDateTime'
 
 function formatDate(value) {
   if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
+  const date = parseBackendUtcTimestamp(value)
+  if (!date) return String(value)
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' }).format(date)
 }
 

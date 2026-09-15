@@ -9,6 +9,7 @@ import com.argusiq.tracing.dto.TraceResponseDto;
 import com.argusiq.tracing.entity.SpanEntity;
 import com.argusiq.tracing.entity.TraceEntity;
 import com.argusiq.tracing.event.TelemetryChangedEvent;
+import com.argusiq.tracing.event.TraceLivePublicationRequested;
 import com.argusiq.tracing.explanation.TraceExplanation;
 import com.argusiq.tracing.explanation.TraceExplanationEngine;
 import com.argusiq.tracing.mapper.OtlpMapper;
@@ -19,7 +20,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,14 +34,12 @@ import java.util.Optional;
 public class TraceService {
 
     private static final Logger logger = LoggerFactory.getLogger(TraceService.class);
-    private static final String TRACE_TOPIC = "/topic/traces";
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final TraceRepository traceRepository;
     private final SpanRepository spanRepository;
     private final ServiceDiscoveryService serviceDiscoveryService;
     private final OtlpMapper otlpMapper;
-    private final SimpMessagingTemplate messagingTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final TraceCriticalPathCalculator criticalPathCalculator;
     private final TraceExplanationEngine explanationEngine;
@@ -51,7 +49,6 @@ public class TraceService {
             SpanRepository spanRepository,
             ServiceDiscoveryService serviceDiscoveryService,
             OtlpMapper otlpMapper,
-            SimpMessagingTemplate messagingTemplate,
             ApplicationEventPublisher eventPublisher,
             TraceCriticalPathCalculator criticalPathCalculator,
             TraceExplanationEngine explanationEngine
@@ -60,7 +57,6 @@ public class TraceService {
         this.spanRepository = spanRepository;
         this.serviceDiscoveryService = serviceDiscoveryService;
         this.otlpMapper = otlpMapper;
-        this.messagingTemplate = messagingTemplate;
         this.eventPublisher = eventPublisher;
         this.criticalPathCalculator = criticalPathCalculator;
         this.explanationEngine = explanationEngine;
@@ -123,9 +119,9 @@ public class TraceService {
         trace.addSpan(rootSpan);
 
         TraceEntity saved = traceRepository.save(trace);
-        eventPublisher.publishEvent(new TelemetryChangedEvent());
+        eventPublisher.publishEvent(new TelemetryChangedEvent(saved.getTraceId()));
         TraceResponseDto dto = otlpMapper.mapToTraceResponseDto(saved);
-        messagingTemplate.convertAndSend(TRACE_TOPIC, dto);
+        eventPublisher.publishEvent(new TraceLivePublicationRequested(dto));
         logger.info("Captured canonical HTTP trace traceId={} {} {}", traceId, httpMethod, requestUri);
         return saved;
     }

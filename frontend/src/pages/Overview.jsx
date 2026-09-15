@@ -97,15 +97,13 @@ function Overview() {
         tone: 'source',
       },
       {
-        label: 'Overall Health',
+        label: 'Observed Telemetry',
         value: systemHealth.status,
-        detail: backendHealth?.status
-          ? `Backend reports ${backendHealth.status}`
-          : systemHealth.summary,
+        detail: 'Bounded recent trace evidence',
         tone: getHealthMetricTone(systemHealth.tone),
       },
     ]
-  }, [analytics, backendHealth, backendMetrics, recentTraces.length, systemHealth])
+  }, [analytics, backendMetrics, recentTraces.length, systemHealth])
 
   const isOverviewLoading = isLoading || isBackendSummaryLoading
 

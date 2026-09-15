@@ -1,3 +1,5 @@
+import { backendUtcEpochMillis } from '../../lib/backendDateTime'
+
 function getStatusColor(statusCode) {
   const code = (statusCode || '').toUpperCase()
   if (code === 'ERROR' || code === '5XX' || code === '500') return '#EF4444'
@@ -17,15 +19,15 @@ function InvestigationTimeline({ spans = [], traceSummary = {}, onSelectSpan }) 
   // Determine min start time
   let minStart = Number.MAX_SAFE_INTEGER
   spans.forEach((s) => {
-    const t = new Date(s.startTime).getTime()
-    if (!Number.isNaN(t) && t < minStart) minStart = t
+    const t = backendUtcEpochMillis(s.startTime)
+    if (t !== null && t < minStart) minStart = t
   })
   if (minStart === Number.MAX_SAFE_INTEGER) minStart = 0
 
   // Sort spans chronologically by start time
   const timelineEvents = spans.map((span) => {
-    const startTime = new Date(span.startTime).getTime()
-    const offsetMs = !Number.isNaN(startTime) ? Math.max(0, startTime - minStart) : 0
+    const startTime = backendUtcEpochMillis(span.startTime)
+    const offsetMs = startTime !== null ? Math.max(0, startTime - minStart) : 0
     const durationMs = span.durationMs || 0
 
     return {

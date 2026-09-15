@@ -53,7 +53,7 @@ public class OtlpTraceMergeService {
 
         recomputeSummary(storedTrace, incomingTrace, previousRootSpanId);
         TraceEntity savedTrace = traceRepository.saveAndFlush(storedTrace);
-        eventPublisher.publishEvent(new TelemetryChangedEvent());
+        eventPublisher.publishEvent(new TelemetryChangedEvent(savedTrace.getTraceId()));
         return otlpMapper.mapToTraceResponseDto(savedTrace);
     }
 

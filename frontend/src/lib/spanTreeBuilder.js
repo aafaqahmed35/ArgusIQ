@@ -1,3 +1,5 @@
+import { backendUtcEpochMillis } from './backendDateTime'
+
 /**
  * Utility for parsing flat SpanDto collections into a hierarchical tree structure.
  * Runs in O(N) time using a single map pass.
@@ -5,9 +7,7 @@
 
 function parseTime(timestamp) {
   if (!timestamp) return 0
-  const date = new Date(timestamp)
-  const time = date.getTime()
-  return Number.isNaN(time) ? 0 : time
+  return backendUtcEpochMillis(timestamp) ?? 0
 }
 
 export function buildSpanTree(spans = [], traceSummary = {}) {

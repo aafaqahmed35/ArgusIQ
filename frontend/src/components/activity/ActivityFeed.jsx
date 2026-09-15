@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import ActivityFeedItem from './ActivityFeedItem'
+import { backendUtcEpochMillis, parseBackendUtcTimestamp } from '../../lib/backendDateTime'
 
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
 const STATUS_FIELDS = ['status', 'statusCode', 'httpStatus']
@@ -15,11 +16,11 @@ function getFieldValue(trace, fields, fallback = '—') {
 
 function getTraceTimestamp(trace) {
   const value = getFieldValue(trace, DATE_FIELDS, null)
-  const timestamp = value ? new Date(value).getTime() : Number.NaN
+  const timestamp = backendUtcEpochMillis(value)
 
   return {
     raw: value,
-    sortValue: Number.isNaN(timestamp) ? null : timestamp,
+    sortValue: timestamp,
   }
 }
 
@@ -28,9 +29,9 @@ function formatTimestamp(value) {
     return '—'
   }
 
-  const date = new Date(value)
+  const date = parseBackendUtcTimestamp(value)
 
-  if (Number.isNaN(date.getTime())) {
+  if (!date) {
     return String(value)
   }
 
@@ -56,7 +57,20 @@ function formatDuration(value) {
 }
 
 function getStatusClass(status) {
+  const statusText = String(status ?? '').trim().toUpperCase()
   const numericStatus = Number(status)
+
+  if (statusText === 'ERROR') {
+    return 'activity-status activity-status--error'
+  }
+
+  if (statusText === 'UNSET' || statusText === 'WARN') {
+    return 'activity-status activity-status--warning'
+  }
+
+  if (statusText === 'OK') {
+    return 'activity-status activity-status--success'
+  }
 
   if (Number.isNaN(numericStatus)) {
     return 'activity-status activity-status--neutral'

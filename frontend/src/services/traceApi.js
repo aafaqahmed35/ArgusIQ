@@ -75,3 +75,18 @@ export async function fetchHealth() {
   const response = await traceClient.get('/health')
   return response.data
 }
+
+export async function fetchAlerts() {
+  const response = await traceClient.get('/alerts')
+  return response.data
+}
+
+export async function acknowledgeAlert(alertId) {
+  const response = await traceClient.post(`/alerts/${encodeURIComponent(alertId)}/acknowledge`)
+  return response.data
+}
+
+export async function resolveAlert(alertId) {
+  const response = await traceClient.post(`/alerts/${encodeURIComponent(alertId)}/resolve`)
+  return response.data
+}

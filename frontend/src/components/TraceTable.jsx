@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getTraceKey } from '../hooks/useTraces'
+import { parseBackendUtcTimestamp } from '../lib/backendDateTime'
 
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
 const STATUS_FIELDS = ['statusCode', 'status', 'httpStatus']
@@ -20,9 +21,9 @@ function formatDate(value) {
     return '—'
   }
 
-  const date = new Date(value)
+  const date = parseBackendUtcTimestamp(value)
 
-  if (Number.isNaN(date.getTime())) {
+  if (!date) {
     return String(value)
   }
 

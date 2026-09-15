@@ -175,6 +175,83 @@ observed off-path errors, downstream errors, concentration, cross-service
 evidence, exclusive time, overlap, then graph limitations. `UNAVAILABLE`
 structural paths never produce path-based findings.
 
+#### Deterministic alert evaluation
+
+Alert rules are configuration; alert occurrences are persisted records that a
+rule matched observed telemetry. Evaluation never asserts an outage, service
+health, root cause, or remediation. The V1 evaluator supports only these
+inclusive (`observed >= threshold`) contracts:
+
+- `ERROR_RATE_THRESHOLD` counts persisted `SERVER` spans in a closed UTC rolling
+  window. Error rate is `ERROR` server spans divided by all server spans in the
+  same population. A zero denominator or population below `minimumSamples` does
+  not match.
+- `P95_LATENCY_THRESHOLD` calculates PostgreSQL continuous p95 over duration of
+  that same server-span population. A missing value or population below
+  `minimumSamples` does not match.
+- `TRACE_ERROR` matches only when the newly persisted trace directly reports
+  status `ERROR`. Its evidence identifies the trace, canonical trace service and
+  root operation, observed status, and root HTTP status when present; it does not
+  infer which component caused the error. `observedAt` is the persisted root/trace
+  end timestamp; event occurrences do not claim a rolling evaluation window.
+
+A null service scope uses the global server-span population. A non-null scope
+uses exact discovered `service.name` identity. Each evaluation captures one UTC
+instant; rolling windows are `[evaluationTime - windowSeconds, evaluationTime]`.
+Telemetry events are handled only after their persistence transaction commits,
+and occurrence writes run in a new transaction so an evaluation failure is
+logged without rolling back telemetry ingestion.
+
+Each local MVC trace save publishes one event carrying that saved trace ID.
+OTLP groups a request by trace ID and publishes one event for each successfully
+committed trace merge, so one export request can publish multiple events when it
+contains multiple traces. Exporter retries and incremental batches publish again
+after each successful merge. Aggregate rules always re-query their configured
+service or global population; the event trace ID is only their trigger.
+`TRACE_ERROR` alone is trace-specific and loads exactly the persisted trace named
+by the event. Replayed or late spans therefore follow the canonical persisted
+trace status produced by the OTLP merge rather than a separate alert-only error
+definition.
+
+There is at most one active occurrence for each rule and scope. A repeated match
+updates `lastTriggeredAt` and structured evidence instead of inserting another
+active row. If a threshold no longer matches, the occurrence remains open for
+manual resolution and records `lastEvaluationState = CLEAR`. Acknowledgement
+means a human has seen the occurrence and does not close or suppress it.
+If the condition matches again before resolution, that same active occurrence
+returns to `MATCHED`, refreshes its evidence and `lastTriggeredAt`, and preserves
+acknowledgement. Resolution closes only that occurrence; a later match creates a new one. Direct
+trace-error occurrences similarly remain active until manually resolved.
+
+Rule creation requires an explicit `name`, implemented `type`, and `severity`.
+Threshold rules additionally require `threshold`, `windowSeconds`, and
+`minimumSamples`; their V1 comparator is fixed to inclusive `>=`. `TRACE_ERROR`
+accepts none of those threshold fields. Error-rate thresholds use percentage
+units and must be between 0 and 100. P95 thresholds are finite, non-negative
+milliseconds. Rolling windows are limited to 1–31,536,000 seconds and minimum
+samples to 1–1,000,000,000 so invalid or overflow-prone configuration is rejected
+at creation. Rule and service names follow their 255-character persistence
+bounds. For example, a demonstration p95 rule
+may explicitly choose 1000 ms over five minutes with at least 20 samples, but
+that example is not a universal production threshold. Empty or incomplete rule
+requests are rejected rather than silently creating operational configuration.
+Pre-V4 placeholder rules are disabled during migration because their types were
+never evaluated. The legacy free-form
+evidence, recommendation-placeholder, and owner-placeholder columns are removed;
+free-form evidence is retained as labelled legacy description text, while the
+owner and recommendation placeholder values are intentionally retired. Existing
+occurrences use their historical `created_time` as the only supportable legacy
+trigger/evaluation timestamp and are marked `LEGACY_IMPORTED`; migration time is
+not presented as telemetry history. New occurrence evidence is structured and no
+recommendation is generated. The Alerts page reads
+backend occurrences and structured evidence; it no longer treats a bounded
+client-side trace window or connection state as alert authority.
+
+API date-time fields backed by `LocalDateTime` are serialized without an offset
+but represent UTC wall-clock values. Frontend consumers treat those values as UTC
+instants; values that already include `Z` or an explicit offset retain that
+supplied offset.
+
 #### Metrics semantics
 
 Global analytics are aggregates over persisted traces. `totalTraces` is a count,
@@ -194,6 +271,11 @@ is an evidence-limited signal: `ACTIVE` means recently observed without a high
 recent error share, `ERRORING` means the last five minutes contain at least 10%
 erroring observed requests, and `STALE` means no telemetry was observed for five
 minutes. In particular, `STALE` does not prove that a service is unavailable.
+
+Service relationship edges use the parent span identifiers reported in the same
+trace to describe observed cross-service child links. They are an observational
+topology signal, not Critical Path structural validation or proof of a causal,
+availability, or bottleneck dependency.
 
 Analytics summaries and endpoint rankings cover persisted history. Service
 detail includes separately bounded recent traces and recent errors (up to ten),
@@ -243,8 +325,8 @@ silently claimed or modified. Before adopting Flyway for such a database:
 Fast integration tests retain H2 in PostgreSQL compatibility mode for semantic
 regression coverage, but Flyway creates their schema and Hibernate validates it.
 PostgreSQL locking, uniqueness, rollback, and concurrent OTLP behavior are covered
-by `PostgresPersistenceIntegrationTest`, which starts and removes PostgreSQL
-automatically through Testcontainers. Docker Desktop or another
+by `PostgresPersistenceIntegrationTest` and `AlertEvaluationPostgresIntegrationTest`,
+which start and remove PostgreSQL automatically through Testcontainers. Docker Desktop or another
 Testcontainers-compatible Docker runtime must be running; no database credentials
 are required in tracked test configuration.
 

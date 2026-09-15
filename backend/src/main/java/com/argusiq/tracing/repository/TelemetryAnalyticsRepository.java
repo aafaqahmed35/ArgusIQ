@@ -157,6 +157,31 @@ public class TelemetryAnalyticsRepository {
         );
     }
 
+    public AlertWindowAggregate alertWindowAggregate(
+            LocalDateTime windowStart,
+            LocalDateTime windowEnd,
+            String serviceName
+    ) {
+        String servicePredicate = serviceName == null ? "" : " AND service_name = ?";
+        String sql = """
+                SELECT COUNT(*) AS sample_count,
+                       COUNT(CASE WHEN UPPER(status_code) = 'ERROR' THEN 1 END) AS error_count,
+                       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_latency_ms
+                FROM spans
+                WHERE UPPER(kind) = 'SERVER'
+                  AND start_time >= ?
+                  AND start_time <= ?
+                """ + servicePredicate;
+        Object[] parameters = serviceName == null
+                ? new Object[]{windowStart, windowEnd}
+                : new Object[]{windowStart, windowEnd, serviceName};
+        return jdbcTemplate.queryForObject(sql, (resultSet, rowNumber) -> new AlertWindowAggregate(
+                resultSet.getLong("sample_count"),
+                resultSet.getLong("error_count"),
+                nullableDouble(resultSet, "p95_latency_ms")
+        ), parameters);
+    }
+
     private GlobalTraceAggregate mapGlobalTraceAggregate(ResultSet resultSet, int rowNumber) throws SQLException {
         return new GlobalTraceAggregate(
                 resultSet.getLong("total_traces"),
@@ -294,5 +319,11 @@ public class TelemetryAnalyticsRepository {
             Long maximumLatencyMs,
             long errorCount
     ) {
+    }
+
+    public record AlertWindowAggregate(long sampleCount, long errorCount, Double p95LatencyMs) {
+        public Double errorRatePercentage() {
+            return sampleCount > 0 ? errorCount * 100.0 / sampleCount : null;
+        }
     }
 }

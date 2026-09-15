@@ -1,86 +1,44 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AlertTimeline from '../components/alerts/AlertTimeline'
-import DerivedAlertsBanner from '../components/alerts/DerivedAlertsBanner'
 import PageHeader from '../components/layout/PageHeader'
-import { buildDerivedAlerts } from '../lib/derivedAlerts'
-import { useTraceAnalytics } from '../hooks/useTraceAnalytics'
-import { useTraces } from '../hooks/useTraces'
+import { acknowledgeAlert, fetchAlerts, resolveAlert } from '../services/traceApi'
 import '../styles/dashboard.css'
 
-const DISMISSED_ALERTS_KEY = 'argusiq-alerts-dismissed'
-
-function readDismissedAlertIds() {
-  try {
-    const storedValue = sessionStorage.getItem(DISMISSED_ALERTS_KEY)
-    const parsedValue = storedValue ? JSON.parse(storedValue) : []
-
-    return Array.isArray(parsedValue) ? parsedValue.filter((value) => typeof value === 'string') : []
-  } catch {
-    return []
-  }
-}
-
 function Alerts() {
-  const {
-    recentTraces,
-    recentTraceLimit,
-    isLoading,
-    error,
-    websocketStatus,
-    refreshRecentTraces,
-  } = useTraces()
-  const analytics = useTraceAnalytics(recentTraces)
+  const [alerts, setAlerts] = useState([])
   const [selectedAlertId, setSelectedAlertId] = useState(null)
-  const [dismissedAlertIds, setDismissedAlertIds] = useState(readDismissedAlertIds)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  const derivedAlerts = useMemo(
-    () =>
-      buildDerivedAlerts({
-        recentTraces,
-        analytics,
-        websocketStatus,
-        isLoading,
-        error,
-      }),
-    [analytics, error, isLoading, recentTraces, websocketStatus],
-  )
-
-  const visibleAlerts = useMemo(
-    () => derivedAlerts.filter((alert) => !dismissedAlertIds.includes(alert.id)),
-    [derivedAlerts, dismissedAlertIds],
-  )
-
-  const selectedAlert = useMemo(() => {
-    if (!selectedAlertId) {
-      return null
+  const loadAlerts = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      setAlerts(await fetchAlerts())
+    } catch (requestError) {
+      setError(requestError)
+    } finally {
+      setIsLoading(false)
     }
-
-    return visibleAlerts.find((alert) => alert.id === selectedAlertId) ?? null
-  }, [selectedAlertId, visibleAlerts])
-
-  const handleRefresh = useCallback(async () => {
-    await refreshRecentTraces()
-  }, [refreshRecentTraces])
-
-  const handleAlertSelect = useCallback((alert) => {
-    setSelectedAlertId(alert.id)
   }, [])
 
-  const handleAlertDeselect = useCallback(() => {
-    setSelectedAlertId(null)
-  }, [])
+  useEffect(() => {
+    queueMicrotask(loadAlerts)
+  }, [loadAlerts])
 
-  const handleAlertDismiss = useCallback((alertId) => {
-    setDismissedAlertIds((currentIds) => {
-      if (currentIds.includes(alertId)) {
-        return currentIds
-      }
+  const selectedAlert = useMemo(
+    () => alerts.find((alert) => alert.alertId === selectedAlertId) ?? null,
+    [alerts, selectedAlertId],
+  )
 
-      const nextIds = [...currentIds, alertId]
-      sessionStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(nextIds))
-      return nextIds
-    })
-    setSelectedAlertId((currentId) => (currentId === alertId ? null : currentId))
+  const runAction = useCallback(async (action, alertId) => {
+    setError(null)
+    try {
+      const updatedAlert = await action(alertId)
+      setAlerts((current) => current.map((alert) => (alert.alertId === alertId ? updatedAlert : alert)))
+    } catch (requestError) {
+      setError(requestError)
+    }
   }, [])
 
   return (
@@ -88,24 +46,21 @@ function Alerts() {
       <section className="alerts-workspace__header" aria-label="Alerts header">
         <PageHeader
           title="Alerts"
-          subtitle="Derived signals from connection state and the bounded recent trace window."
-          websocketStatus={websocketStatus}
+          subtitle="Deterministic rule matches backed by persisted telemetry evidence."
           isLoading={isLoading}
-          onRefresh={handleRefresh}
-          showConnectionStatus
-          statusNote={`Live signals · latest ${recentTraces.length.toLocaleString()} traces`}
+          onRefresh={loadAlerts}
+          statusNote={`${alerts.length.toLocaleString()} recent occurrences`}
         />
       </section>
 
-      <DerivedAlertsBanner recentTraceLimit={recentTraceLimit} />
-
       <AlertTimeline
-        alerts={visibleAlerts}
+        alerts={alerts}
         error={error}
         isLoading={isLoading}
-        onAlertDeselect={handleAlertDeselect}
-        onAlertDismiss={handleAlertDismiss}
-        onAlertSelect={handleAlertSelect}
+        onAcknowledge={(alertId) => runAction(acknowledgeAlert, alertId)}
+        onAlertDeselect={() => setSelectedAlertId(null)}
+        onAlertSelect={(alert) => setSelectedAlertId(alert.alertId)}
+        onResolve={(alertId) => runAction(resolveAlert, alertId)}
         selectedAlert={selectedAlert}
       />
     </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { fetchTraceByTraceId } from '../../services/traceApi'
 import { buildSpanTree } from '../../lib/spanTreeBuilder'
 import { computeCriticalPath } from '../../lib/criticalPath'
+import { parseBackendUtcTimestamp } from '../../lib/backendDateTime'
 import TraceDetailSection from './TraceDetailSection'
 import TraceMetadataGrid from './TraceMetadataGrid'
 import SpanTree from './SpanTree'
@@ -17,8 +18,8 @@ import SpanFilterToolbar from './SpanFilterToolbar'
 
 function formatDate(value) {
   if (!value || value === '—') return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
+  const date = parseBackendUtcTimestamp(value)
+  if (!date) return String(value)
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' }).format(date)
 }
 

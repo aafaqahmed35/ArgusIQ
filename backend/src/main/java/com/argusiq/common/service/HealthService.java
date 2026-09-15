@@ -4,6 +4,7 @@ import com.argusiq.common.dto.HealthResponseDto;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Service
 public class HealthService {
@@ -12,7 +13,7 @@ public class HealthService {
         return new HealthResponseDto(
                 "UP",
                 "ArgusIQ",
-                LocalDateTime.now()
+                LocalDateTime.now(ZoneOffset.UTC)
         );
     }
 }

@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
+import { backendUtcEpochMillis, parseBackendUtcTimestamp } from '../lib/backendDateTime'
+import { classifyTraceObservation, observedTelemetryStatus } from '../lib/observedTelemetry'
 
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
-const STATUS_FIELDS = ['status', 'statusCode', 'httpStatus']
 const DURATION_FIELDS = ['executionTimeMs', 'responseTime', 'duration', 'latency', 'responseTimeMs']
 
 const WEBSOCKET_LIVE = 'LIVE'
@@ -19,13 +20,6 @@ function getDurationMs(trace) {
   return Number.isFinite(durationMs) ? durationMs : null
 }
 
-function getStatusCode(trace) {
-  const status = getFieldValue(trace, STATUS_FIELDS)
-  const statusCode = Number(status)
-
-  return Number.isFinite(statusCode) ? statusCode : null
-}
-
 function getTraceTime(trace) {
   const value = getFieldValue(trace, DATE_FIELDS)
 
@@ -33,8 +27,7 @@ function getTraceTime(trace) {
     return null
   }
 
-  const timestamp = new Date(value).getTime()
-  return Number.isFinite(timestamp) ? timestamp : null
+  return backendUtcEpochMillis(value)
 }
 
 function formatDuration(value) {
@@ -54,19 +47,15 @@ function formatLatestTrace(value) {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).format(new Date(value))
+  }).format(parseBackendUtcTimestamp(value))
 }
 
 function getToneForStatus(status) {
-  if (status === 'Healthy') {
-    return 'success'
-  }
-
-  if (status === 'Degraded' || status === 'Loading') {
+  if (status === 'Latency observed' || status === 'Loading') {
     return 'warning'
   }
 
-  if (status === 'Critical' || status === 'Offline') {
+  if (status === 'Errors observed') {
     return 'error'
   }
 
@@ -77,11 +66,12 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
   return useMemo(() => {
     const recentTraceCount = recentTraces.length
     const durations = recentTraces.map(getDurationMs).filter((duration) => duration !== null)
-    const statusCodes = recentTraces.map(getStatusCode).filter((statusCode) => statusCode !== null)
-    const serverErrors = statusCodes.filter((statusCode) => statusCode >= 500).length
-    const clientErrors = statusCodes.filter((statusCode) => statusCode >= 400 && statusCode < 500).length
-    const errorCount = serverErrors + clientErrors
-    const errorRate = statusCodes.length > 0 ? errorCount / statusCodes.length : 0
+    const observations = recentTraces.map(classifyTraceObservation)
+    const serverErrors = observations.filter((observation) => observation.kind === 'SERVER_ERROR').length
+    const clientErrors = observations.filter((observation) => observation.kind === 'CLIENT_ERROR').length
+    const traceErrors = observations.filter((observation) => observation.kind === 'TRACE_ERROR').length
+    const unsetCount = observations.filter((observation) => observation.kind === 'UNSET').length
+    const errorCount = serverErrors + clientErrors + traceErrors
     const latestTraceTime = recentTraces.map(getTraceTime).filter(Boolean).sort((left, right) => right - left)[0] ?? null
     const latestTraceLabel = formatLatestTrace(latestTraceTime)
     const averageResponseTime = analytics.averageResponseTime
@@ -91,7 +81,7 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
       (averageResponseTime !== null && averageResponseTime >= 750) || (p95ResponseTime !== null && p95ResponseTime >= 1500)
     const backendUnavailable = Boolean(error)
     const websocketDisconnected = websocketStatus !== WEBSOCKET_LIVE && websocketStatus !== WEBSOCKET_CONNECTING
-    const noRecentTraces = !isLoading && !error && recentTraceCount === 0
+    const noRecentTraces = !isLoading && recentTraceCount === 0
 
     const anomalies = [
       ...(backendUnavailable ? ['Backend unavailable'] : []),
@@ -100,19 +90,17 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
       ...(highLatencyObserved ? ['High latency observed'] : []),
       ...(elevatedResponseTimes ? ['Elevated response times'] : []),
       ...(serverErrors > 0 ? [`${serverErrors.toLocaleString()} server error traces observed`] : []),
+      ...(traceErrors > 0 ? [`${traceErrors.toLocaleString()} trace ERROR observations`] : []),
+      ...(clientErrors > 0 ? [`${clientErrors.toLocaleString()} client-error observations`] : []),
+      ...(unsetCount > 0 ? [`${unsetCount.toLocaleString()} traces reported UNSET status`] : []),
     ]
 
-    let status = 'Healthy'
-
-    if (isLoading) {
-      status = 'Loading'
-    } else if (backendUnavailable) {
-      status = 'Offline'
-    } else if (serverErrors > 0 || errorRate >= 0.1 || elevatedResponseTimes || websocketDisconnected) {
-      status = 'Critical'
-    } else if (clientErrors > 0 || highLatencyObserved || noRecentTraces || websocketStatus === WEBSOCKET_CONNECTING) {
-      status = 'Degraded'
-    }
+    const status = observedTelemetryStatus({
+      isLoading,
+      observationCount: recentTraceCount,
+      errorCount,
+      latencyObserved: highLatencyObserved || elevatedResponseTimes,
+    })
 
     const backendState = backendUnavailable ? 'Unavailable' : isLoading ? 'Loading' : 'Reachable'
     const restState = backendUnavailable ? 'Error' : isLoading ? 'Refreshing' : 'Connected'
@@ -122,12 +110,9 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
     return {
       status,
       tone: getToneForStatus(status),
-      summary:
-        status === 'Healthy'
-          ? 'All derived frontend signals are within normal bounds.'
-          : 'Operations posture is based on the bounded recent trace window, REST state, and websocket status.',
+      summary: 'Evidence is limited to the bounded recent trace window; it is not an availability or uptime claim.',
       snapshot: [
-        { label: 'Backend', value: backendState, tone: backendUnavailable ? 'error' : isLoading ? 'warning' : 'success' },
+        { label: 'ArgusIQ API', value: backendState, tone: backendUnavailable ? 'error' : isLoading ? 'warning' : 'success' },
         { label: 'REST', value: restState, tone: backendUnavailable ? 'error' : isLoading ? 'warning' : 'success' },
         {
           label: 'WebSocket',
@@ -142,7 +127,7 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
         { label: 'Realtime', value: websocketState, detail: 'Websocket connection', tone: websocketStatus === WEBSOCKET_LIVE ? 'success' : websocketStatus === WEBSOCKET_CONNECTING ? 'warning' : 'error' },
         { label: 'Trace Intake', value: recentTraceCount > 0 ? 'Receiving' : 'No data', detail: `${recentTraceCount.toLocaleString()} recent records`, tone: recentTraceCount > 0 ? 'success' : 'neutral' },
         { label: 'Recent Latency', value: formatDuration(p95ResponseTime), detail: 'Recent-window P95', tone: elevatedResponseTimes ? 'error' : highLatencyObserved ? 'warning' : durations.length > 0 ? 'success' : 'neutral' },
-        { label: 'Error State', value: `${errorCount.toLocaleString()} issues`, detail: `${serverErrors.toLocaleString()} server / ${clientErrors.toLocaleString()} client`, tone: serverErrors > 0 ? 'error' : clientErrors > 0 ? 'warning' : 'success' },
+        { label: 'Observed Errors', value: `${errorCount.toLocaleString()} traces`, detail: `${serverErrors.toLocaleString()} server HTTP / ${clientErrors.toLocaleString()} client HTTP / ${traceErrors.toLocaleString()} trace status`, tone: errorCount > 0 ? 'error' : 'neutral' },
       ],
       anomalies,
     }

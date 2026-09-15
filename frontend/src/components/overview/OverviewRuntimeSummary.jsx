@@ -6,8 +6,8 @@ function OverviewRuntimeSummary({ health, backendHealth, isLoading = false }) {
     <section className="analytics-panel overview-runtime-summary" aria-labelledby="overview-runtime-summary-title">
       <div className="analytics-panel__header">
         <div>
-          <p className="section-kicker">Runtime</p>
-          <h2 id="overview-runtime-summary-title">Runtime Summary</h2>
+          <p className="section-kicker">ArgusIQ + telemetry</p>
+          <h2 id="overview-runtime-summary-title">Observed Runtime Signals</h2>
         </div>
         {backendStatus ? <span className="panel-action">{backendStatus}</span> : null}
       </div>
@@ -23,7 +23,7 @@ function OverviewRuntimeSummary({ health, backendHealth, isLoading = false }) {
           <div className={`overview-runtime-summary__status overview-runtime-summary__status--${health.tone}`}>
             <strong>{health.status}</strong>
             <p>{health.summary}</p>
-            {backendService ? <small>Backend service: {backendService}</small> : null}
+            {backendService ? <small>ArgusIQ backend service: {backendService}</small> : null}
           </div>
 
           <dl className="overview-runtime-summary__grid">

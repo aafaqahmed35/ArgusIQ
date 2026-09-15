@@ -1,3 +1,5 @@
+import { backendUtcEpochMillis } from '../../lib/backendDateTime'
+
 const DATE_FIELDS = ['timestamp', 'createdAt', 'startTime', 'endTime']
 
 function getTraceTimestamp(trace) {
@@ -9,8 +11,7 @@ function getTraceTimestamp(trace) {
     return null
   }
 
-  const timestamp = new Date(trace[field]).getTime()
-  return Number.isFinite(timestamp) ? timestamp : null
+  return backendUtcEpochMillis(trace[field])
 }
 
 function buildVolumeBuckets(traces, bucketCount = 16) {

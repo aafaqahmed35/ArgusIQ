@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { parseBackendUtcTimestamp } from '../../lib/backendDateTime'
 import { formatDuration } from '../../lib/traceAggregation'
 
 function formatPercent(value) {
@@ -7,7 +8,8 @@ function formatPercent(value) {
 
 function formatTimestamp(value) {
   if (!value) return '—'
-  return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' }).format(new Date(value)) + ' UTC'
+  const date = parseBackendUtcTimestamp(value)
+  return date ? `${new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' }).format(date)} UTC` : String(value)
 }
 
 function formatOperation(operation) {
@@ -51,7 +53,7 @@ function ServiceDetailPanel({ service, isLoading = false, error = null }) {
         <div className="analytics-endpoint-detail__item"><dt>Observed success rate</dt><dd>{formatPercent(service.successRate)}</dd></div>
         <div className="analytics-endpoint-detail__item"><dt>Average / P95 / P99</dt><dd>{formatDuration(service.averageLatencyMs)} / {formatDuration(service.p95LatencyMs)} / {formatDuration(service.p99LatencyMs)}</dd></div>
         <div className="analytics-endpoint-detail__item"><dt>Observed operations</dt><dd>{service.observedOperationCount.toLocaleString()}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Outgoing dependencies</dt><dd>{service.dependencyCount.toLocaleString()}</dd></div>
+        <div className="analytics-endpoint-detail__item"><dt>Reported cross-service child links</dt><dd>{service.dependencyCount.toLocaleString()}</dd></div>
         <div className="analytics-endpoint-detail__item"><dt>First observed</dt><dd>{formatTimestamp(service.firstSeen)}</dd></div>
         <div className="analytics-endpoint-detail__item"><dt>Last observed</dt><dd>{formatTimestamp(service.lastSeen)}</dd></div>
         <div className="analytics-endpoint-detail__item"><dt>Observation age</dt><dd>{service.observationAgeMinutes === null ? '—' : `${service.observationAgeMinutes.toLocaleString()} min`}</dd></div>

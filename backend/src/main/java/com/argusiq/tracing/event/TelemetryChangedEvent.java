@@ -1,4 +1,4 @@
 package com.argusiq.tracing.event;
 
-public record TelemetryChangedEvent() {
+public record TelemetryChangedEvent(String traceId) {
 }
