@@ -5,6 +5,7 @@ import InvestigationToolbar from '../components/traces/InvestigationToolbar'
 import TraceDetailsDrawer from '../components/traces/TraceDetailsDrawer'
 import TracePanel from '../components/traces/TracePanel'
 import { getTraceKey, useTraces } from '../hooks/useTraces'
+import { buildTraceSearchRequest, normalizeTraceSearchResult } from './traceExplorerSearch'
 import { searchTraces } from '../services/traceApi'
 import '../styles/dashboard.css'
 
@@ -65,38 +66,6 @@ function readQuery(searchParams) {
     sortBy,
     sortDirection,
   }
-}
-
-function buildApiCriteria(query) {
-  const criteria = {
-    query: query.query.trim(),
-    traceId: query.traceId.trim(),
-    spanId: query.spanId.trim(),
-    serviceExact: query.service.trim(),
-    endpoint: query.endpoint.trim(),
-    httpMethod: query.httpMethod,
-    status: query.status,
-    from: query.from,
-    to: query.to,
-    page: query.page,
-    size: query.size,
-    sortBy: query.sortBy,
-    sortDirection: query.sortDirection,
-  }
-
-  if (query.latency === 'fast') {
-    criteria.maxDuration = 99
-  } else if (query.latency === 'normal') {
-    criteria.minDuration = 100
-    criteria.maxDuration = 499
-  } else if (query.latency === 'slow') {
-    criteria.minDuration = 500
-    criteria.maxDuration = 999
-  } else if (query.latency === 'very-slow') {
-    criteria.minDuration = 1000
-  }
-
-  return criteria
 }
 
 function countActiveFilters(query) {
@@ -181,9 +150,13 @@ function TraceExplorer() {
     return () => window.clearTimeout(debounceTimer)
   }, [query.query, searchDraft, updateQuery])
 
-  const apiCriteria = useMemo(() => buildApiCriteria(query), [query])
+  const searchRequest = useMemo(
+    () => buildTraceSearchRequest(query, refreshSequence, liveTraceSequence),
+    [liveTraceSequence, query, refreshSequence],
+  )
 
   useEffect(() => {
+    const { criteria: apiCriteria } = searchRequest
     const controller = new AbortController()
     const requestSequence = ++requestSequenceRef.current
     const liveSequenceAtRequestStart = liveTraceSequenceRef.current
@@ -212,19 +185,11 @@ function TraceExplorer() {
             return
           }
 
-          const items = Array.isArray(pageResult?.items) ? pageResult.items : []
-          setResult({
-            items,
-            page: Number(pageResult?.page ?? apiCriteria.page),
-            size: Number(pageResult?.size ?? apiCriteria.size),
-            totalItems: Number(pageResult?.totalItems ?? 0),
-            totalPages: Number(pageResult?.totalPages ?? 0),
-            hasNext: Boolean(pageResult?.hasNext),
-            hasPrevious: Boolean(pageResult?.hasPrevious),
-          })
+          const nextResult = normalizeTraceSearchResult(pageResult, apiCriteria)
+          setResult(nextResult)
           setSelectedTrace((currentTrace) => {
             if (!currentTrace) return null
-            return items.some((trace) => getTraceKey(trace) === getTraceKey(currentTrace)) ? currentTrace : null
+            return nextResult.items.some((trace) => getTraceKey(trace) === getTraceKey(currentTrace)) ? currentTrace : null
           })
           setAcknowledgedLiveSequence(liveSequenceAtRequestStart)
         })
@@ -242,7 +207,7 @@ function TraceExplorer() {
     })
 
     return () => controller.abort()
-  }, [apiCriteria, refreshSequence])
+  }, [searchRequest])
 
   const clearFilters = useCallback(() => {
     setSearchInput({ source: '', value: '' })

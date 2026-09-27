@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AlertTimeline from '../components/alerts/AlertTimeline'
 import PageHeader from '../components/layout/PageHeader'
+import { useTraces } from '../hooks/useTraces'
 import { acknowledgeAlert, fetchAlerts, resolveAlert } from '../services/traceApi'
 import '../styles/dashboard.css'
 
 function Alerts() {
+  const { websocketStatus } = useTraces()
   const [alerts, setAlerts] = useState([])
   const [selectedAlertId, setSelectedAlertId] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -47,6 +49,7 @@ function Alerts() {
         <PageHeader
           title="Alerts"
           subtitle="Deterministic rule matches backed by persisted telemetry evidence."
+          websocketStatus={websocketStatus}
           isLoading={isLoading}
           onRefresh={loadAlerts}
           statusNote={`${alerts.length.toLocaleString()} recent occurrences`}
