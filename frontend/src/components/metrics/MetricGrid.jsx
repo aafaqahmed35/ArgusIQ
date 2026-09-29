@@ -11,6 +11,7 @@ function MetricGrid({ metrics, isLoading = false, className = '' }) {
           detail={metric.detail}
           tone={metric.tone}
           isLoading={isLoading}
+          href={metric.href}
         />
       ))}
     </section>

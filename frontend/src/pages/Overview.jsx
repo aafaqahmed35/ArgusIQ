@@ -3,36 +3,15 @@ import PageHeader from '../components/layout/PageHeader'
 import MetricGrid from '../components/metrics/MetricGrid'
 import ActivityFeed from '../components/activity/ActivityFeed'
 import OverviewChart from '../components/overview/OverviewChart'
+import OverviewInvestigationTargets from '../components/overview/OverviewInvestigationTargets'
 import OverviewRuntimeSummary from '../components/overview/OverviewRuntimeSummary'
+import OverviewTrafficProfile from '../components/overview/OverviewTrafficProfile'
 import { useSystemHealth } from '../hooks/useSystemHealth'
 import { useTraceAnalytics } from '../hooks/useTraceAnalytics'
 import { useTraces } from '../hooks/useTraces'
 import { fetchHealth, fetchMetrics } from '../services/traceApi'
+import { buildOverviewMetrics, getPersistedMetricsState } from './overviewData'
 import '../styles/dashboard.css'
-
-function formatDuration(value) {
-  if (value === null || value === undefined) {
-    return '—'
-  }
-
-  return `${Math.round(value).toLocaleString()} ms`
-}
-
-function getHealthMetricTone(tone) {
-  if (tone === 'success') {
-    return 'live'
-  }
-
-  if (tone === 'warning') {
-    return 'latency'
-  }
-
-  if (tone === 'error') {
-    return 'error'
-  }
-
-  return 'connecting'
-}
 
 function Overview() {
   const {
@@ -47,14 +26,21 @@ function Overview() {
   const systemHealth = useSystemHealth({ recentTraces, analytics, websocketStatus, isLoading, error })
   const [backendHealth, setBackendHealth] = useState(null)
   const [backendMetrics, setBackendMetrics] = useState(null)
+  const [backendHealthError, setBackendHealthError] = useState(false)
+  const [backendMetricsError, setBackendMetricsError] = useState(false)
   const [isBackendSummaryLoading, setIsBackendSummaryLoading] = useState(true)
 
   const loadBackendSummary = useCallback(async () => {
     setIsBackendSummaryLoading(true)
     const [healthResult, metricsResult] = await Promise.allSettled([fetchHealth(), fetchMetrics()])
 
-    setBackendHealth(healthResult.status === 'fulfilled' ? healthResult.value ?? null : null)
-    setBackendMetrics(metricsResult.status === 'fulfilled' ? metricsResult.value ?? null : null)
+    const healthFailed = healthResult.status === 'rejected'
+    const metricsFailed = metricsResult.status === 'rejected'
+
+    setBackendHealth(healthFailed ? null : healthResult.value ?? null)
+    setBackendMetrics(metricsFailed ? null : metricsResult.value ?? null)
+    setBackendHealthError(healthFailed)
+    setBackendMetricsError(metricsFailed)
     setIsBackendSummaryLoading(false)
   }, [])
 
@@ -66,73 +52,57 @@ function Overview() {
     await Promise.all([refreshRecentTraces(), loadBackendSummary()])
   }, [loadBackendSummary, refreshRecentTraces])
 
-  const overviewMetrics = useMemo(() => {
-    const topEndpoint = analytics.topEndpoints[0]
-
-    return [
-      {
-        label: 'Total Traces',
-        value: backendMetrics ? Number(backendMetrics.totalTraces).toLocaleString() : '—',
-        detail: 'All persisted traces · 30 s cache',
-        tone: 'signal',
-      },
-      {
-        label: 'Average Response Time',
-        value: formatDuration(backendMetrics?.averageLatencyMs),
-        detail: 'All persisted traces · 30 s cache',
-        tone: 'latency',
-      },
-      {
-        label: 'P95 Response Time',
-        value: formatDuration(backendMetrics?.p95LatencyMs),
-        detail: 'All persisted traces · 30 s cache',
-        tone: 'latency',
-      },
-      {
-        label: 'Top Recent Endpoint',
-        value: topEndpoint?.endpoint ?? '—',
-        detail: topEndpoint
-          ? `${topEndpoint.count.toLocaleString()} of ${recentTraces.length.toLocaleString()} recent traces`
-          : 'No recent requests yet',
-        tone: 'source',
-      },
-      {
-        label: 'Observed Telemetry',
-        value: systemHealth.status,
-        detail: 'Bounded recent trace evidence',
-        tone: getHealthMetricTone(systemHealth.tone),
-      },
-    ]
-  }, [analytics, backendMetrics, recentTraces.length, systemHealth])
-
-  const isOverviewLoading = isLoading || isBackendSummaryLoading
+  const overviewMetrics = useMemo(() => buildOverviewMetrics(backendMetrics), [backendMetrics])
+  const persistedMetricsState = getPersistedMetricsState({
+    isLoading: isBackendSummaryLoading,
+    error: backendMetricsError,
+    metrics: backendMetrics,
+  })
+  const isOverviewRefreshing = isLoading || isBackendSummaryLoading
 
   return (
     <div className="overview-workspace">
       <section className="overview-workspace__header" aria-label="Overview header">
         <PageHeader
           title="Overview"
-          subtitle="Global backend summary with bounded recent operational signals."
+          subtitle="Persisted telemetry health, latency, traffic, and the latest investigation signals."
           websocketStatus={websocketStatus}
-          isLoading={isLoading}
+          isLoading={isOverviewRefreshing}
           onRefresh={handleRefresh}
+          statusNote={`${recentTraces.length.toLocaleString()} / ${recentTraceLimit.toLocaleString()} recent`}
         />
       </section>
 
       <section className="overview-workspace__kpi" aria-label="Executive KPIs">
-        <MetricGrid className="metric-grid--overview" metrics={overviewMetrics} isLoading={isOverviewLoading} />
+        <MetricGrid className="metric-grid--overview" metrics={overviewMetrics} isLoading={isBackendSummaryLoading} />
       </section>
 
       <section className="overview-workspace__insights" aria-label="Overview insights">
         <OverviewChart
-          recentTraces={recentTraces}
-          recentTraceLimit={recentTraceLimit}
-          isLoading={isOverviewLoading}
+          metrics={backendMetrics}
+          state={persistedMetricsState}
+          onRetry={handleRefresh}
         />
         <OverviewRuntimeSummary
           health={systemHealth}
           backendHealth={backendHealth}
-          isLoading={isOverviewLoading}
+          backendHealthError={backendHealthError}
+          metricsState={persistedMetricsState}
+          isLoading={isOverviewRefreshing}
+          onRetry={handleRefresh}
+        />
+      </section>
+
+      <section className="overview-workspace__signals" aria-label="Operational signals">
+        <OverviewTrafficProfile
+          metrics={backendMetrics}
+          state={persistedMetricsState}
+          onRetry={handleRefresh}
+        />
+        <OverviewInvestigationTargets
+          metrics={backendMetrics}
+          state={persistedMetricsState}
+          onRetry={handleRefresh}
         />
       </section>
 
@@ -140,10 +110,12 @@ function Overview() {
         <ActivityFeed
           traces={recentTraces}
           isLoading={isLoading}
-          limit={5}
+          limit={6}
           actionHref="/traces"
           actionLabel="Open Trace Explorer →"
           className="activity-feed--overview"
+          error={error}
+          onRetry={handleRefresh}
         />
       </section>
     </div>
