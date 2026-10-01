@@ -30,7 +30,7 @@ function formatDuration(value) {
   return `${numericValue.toLocaleString()} ms`
 }
 
-function getStatusBadge(status, durationMs) {
+function getStatusBadge(status) {
   const statusStr = String(status || '').toUpperCase()
   const numericStatus = Number(status)
 
@@ -38,22 +38,22 @@ function getStatusBadge(status, durationMs) {
     return { label: 'ERROR', className: 'status-pill status-pill--error' }
   }
 
-  if (
-    statusStr === 'UNSET' ||
-    (!Number.isNaN(numericStatus) && numericStatus >= 400 && numericStatus < 500) ||
-    (Number(durationMs) >= 1000)
-  ) {
-    return { label: statusStr === 'UNSET' ? 'WARN' : statusStr || 'WARN', className: 'status-pill status-pill--warning' }
+  if (statusStr === 'UNSET' || (!Number.isNaN(numericStatus) && numericStatus >= 400 && numericStatus < 500)) {
+    return { label: statusStr || String(numericStatus), className: 'status-pill status-pill--warning' }
   }
 
-  return { label: statusStr === 'OK' ? 'OK' : statusStr || 'OK', className: 'status-pill status-pill--success' }
+  if (statusStr === 'OK' || (!Number.isNaN(numericStatus) && numericStatus >= 200 && numericStatus < 400)) {
+    return { label: statusStr || String(numericStatus), className: 'status-pill status-pill--success' }
+  }
+
+  return { label: statusStr || 'UNKNOWN', className: 'status-pill status-pill--neutral' }
 }
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'waterfall', label: 'Waterfall' },
   { id: 'tree', label: 'Trace Tree' },
-  { id: 'critical', label: 'Critical Path ⚡' },
+  { id: 'critical', label: 'Critical Path' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'topology', label: 'Topology' },
   { id: 'services', label: 'Services' },
@@ -68,6 +68,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   const [activeTab, setActiveTab] = useState('overview')
   const [fullTraceDetail, setFullTraceDetail] = useState(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [detailError, setDetailError] = useState(false)
   const [selectedSpan, setSelectedSpan] = useState(null)
 
   // Filter toolbar state inside drawer
@@ -86,6 +87,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
     let isSubscribed = true
     const fetchTimer = window.setTimeout(() => {
       setIsLoadingDetail(true)
+      setDetailError(false)
       fetchTraceByTraceId(traceId)
         .then((detail) => {
           if (isSubscribed) {
@@ -95,6 +97,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
         .catch(() => {
           if (isSubscribed) {
             setFullTraceDetail({ traceId, detail: null })
+            setDetailError(true)
           }
         })
         .finally(() => {
@@ -117,12 +120,23 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
     function handleDocumentClick(event) {
       const target = event.target
       if (drawerPanelRef.current?.contains(target)) return
-      if (target.closest?.('.trace-table__row--interactive')) return
+      if (target.closest?.('.trace-table__inspect')) return
       onClose()
     }
 
     document.addEventListener('click', handleDocumentClick)
     return () => document.removeEventListener('click', handleDocumentClick)
+  }, [isOpen, isPanel, onClose])
+
+  useEffect(() => {
+    if (!isOpen || isPanel) return undefined
+
+    function handleEscape(event) {
+      if (event.key === 'Escape') onClose()
+    }
+
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
   }, [isOpen, isPanel, onClose])
 
   // Aggregate telemetry models
@@ -136,16 +150,16 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   )
 
   const traceId = summary.traceId || summary.id || trace?.traceId || trace?.id
-  const serviceName = summary.serviceName || trace?.serviceName || 'AtlasBank'
-  const rootOperation = summary.rootSpanName || trace?.rootSpanName || summary.requestUri || trace?.requestUri || 'HTTP Request'
-  const method = summary.httpMethod || trace?.httpMethod || 'OTLP'
-  const uri = summary.requestUri || trace?.requestUri || '/'
-  const durationMs = summary.durationMs ?? summary.executionTimeMs ?? trace?.durationMs ?? trace?.executionTimeMs ?? 0
-  const statusCode = summary.statusCode || trace?.statusCode || 'OK'
+  const serviceName = summary.serviceName || trace?.serviceName || 'Unknown service'
+  const rootOperation = summary.rootSpanName || trace?.rootSpanName || summary.requestUri || trace?.requestUri || 'Unknown operation'
+  const method = summary.httpMethod || trace?.httpMethod || '—'
+  const uri = summary.requestUri || trace?.requestUri || '—'
+  const durationMs = summary.durationMs ?? summary.executionTimeMs ?? trace?.durationMs ?? trace?.executionTimeMs ?? null
+  const statusCode = summary.statusCode || trace?.statusCode || 'UNKNOWN'
   const statusMessage = summary.statusMessage || trace?.statusMessage
   const startTime = summary.startTime || summary.timestamp || trace?.startTime || trace?.timestamp
   const endTime = summary.endTime || trace?.endTime
-  const spanCount = summary.spanCount || spans.length || 1
+  const spanCount = summary.spanCount ?? (spans.length || null)
 
   // Construct Tree & Critical Path
   const treeData = useMemo(() => buildSpanTree(spans, summary), [spans, summary])
@@ -181,7 +195,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
     [filteredSpans, summary]
   )
 
-  const badge = getStatusBadge(statusCode, durationMs)
+  const badge = getStatusBadge(statusCode)
 
   const handleSelectSpanAndSwitchTab = (spanNode) => {
     setSelectedSpan(spanNode)
@@ -192,7 +206,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   const renderTabContent = () => {
     if (isLoadingDetail) {
       return (
-        <div className="table-state table-state--skeleton" style={{ padding: '2rem' }}>
+        <div className="table-state table-state--skeleton trace-detail-state" aria-busy="true" role="status">
           <span className="skeleton-line skeleton-line--wide" />
           <span className="skeleton-line" />
           <span className="skeleton-line skeleton-line--wide" />
@@ -200,10 +214,18 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
       )
     }
 
+    if (detailError) {
+      return (
+        <div className="table-state table-state--error trace-detail-state" role="alert">
+          Trace summary remains available, but detailed span evidence could not be loaded from the backend.
+        </div>
+      )
+    }
+
     switch (activeTab) {
       case 'overview':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
+          <div className="trace-detail-stack">
             <InvestigationFindings explanation={effectiveFullTraceDetail?.explanation} />
             <CriticalPathBanner criticalPathInfo={criticalPathInfo} />
             <TraceDetailSection title="Request Information">
@@ -211,14 +233,14 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
                 items={[
                   { label: 'Trace ID', value: <code>{traceId}</code> },
                   { label: 'Status', value: <span className={badge.className}>{badge.label}</span> },
-                  { label: 'Service', value: <Link to="/services" style={{ color: '#38bdf8' }}>{serviceName} →</Link> },
+                  { label: 'Service', value: <Link to="/services" className="trace-detail-link">{serviceName} →</Link> },
                   { label: 'Root Operation', value: <strong>{rootOperation}</strong> },
                   { label: 'HTTP Method', value: <span className="method-pill">{method}</span> },
                   { label: 'Request URI', value: <code>{uri}</code> },
                   { label: 'Duration', value: formatDuration(durationMs) },
                   { label: 'Start Time', value: formatDate(startTime) },
                   { label: 'End Time', value: formatDate(endTime) },
-                  { label: 'Total Spans', value: `${spanCount} span(s)` },
+                  { label: 'Total Spans', value: spanCount === null ? '—' : `${spanCount} span(s)` },
                   { label: 'Status Message', value: statusMessage || 'None' },
                 ]}
               />
@@ -228,7 +250,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
       case 'waterfall':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.5rem 0' }}>
+          <div className="trace-detail-stack trace-detail-stack--compact">
             <SpanFilterToolbar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -249,7 +271,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
       case 'tree':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.5rem 0' }}>
+          <div className="trace-detail-stack trace-detail-stack--compact">
             <SpanFilterToolbar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -271,7 +293,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
       case 'critical':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
+          <div className="trace-detail-stack">
             <CriticalPathBanner criticalPathInfo={criticalPathInfo} />
             <SpanTree
               treeData={buildSpanTree(criticalPathInfo.criticalPathNodes, summary)}
@@ -284,7 +306,7 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
       case 'timeline':
         return (
-          <div style={{ padding: '0.5rem 0' }}>
+          <div className="trace-detail-tab-content">
             <InvestigationTimeline
               spans={filteredSpans}
               traceSummary={summary}
@@ -295,21 +317,21 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
 
       case 'topology':
         return (
-          <div style={{ padding: '0.5rem 0' }}>
+          <div className="trace-detail-tab-content">
             <MiniTraceMap spans={spans} traceSummary={summary} />
           </div>
         )
 
       case 'services':
         return (
-          <div style={{ padding: '0.5rem 0' }}>
+          <div className="trace-detail-tab-content">
             <ServiceCallStats spans={spans} totalTraceDurationMs={durationMs} />
           </div>
         )
 
       case 'inspector':
         return (
-          <div style={{ padding: '0.5rem 0' }}>
+          <div className="trace-detail-tab-content">
             <SpanInspector selectedSpan={selectedSpan} spanMap={treeData.spanMap} />
           </div>
         )
@@ -322,27 +344,18 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   const drawerTitle = trace ? rootOperation : 'Trace Details'
 
   const header = (
-    <div className="trace-drawer__header operations-center__header" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '0.75rem' }}>
+    <div className="trace-drawer__header operations-center__header">
       <div>
-        <p className="section-kicker">Trace Investigation Workspace</p>
-        <h2 id="trace-drawer-title" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
+        <p className="section-kicker">Selected trace</p>
+        <h2 id="trace-drawer-title" className="trace-drawer__title">
           <span>{drawerTitle}</span>
-          {isOpen && (
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                padding: '2px 8px',
-                borderRadius: '12px',
-                background: 'rgba(56, 189, 248, 0.15)',
-                color: '#38bdf8',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-              }}
-            >
-              Spans ({spanCount})
-            </span>
-          )}
         </h2>
+        <div className="trace-drawer__summary" aria-label="Selected trace summary">
+          <span>{serviceName}</span>
+          <span>{formatDuration(durationMs)}</span>
+          <span className={badge.className}>{badge.label}</span>
+          <span>{spanCount === null ? 'Span count unavailable' : `${spanCount} spans`}</span>
+        </div>
       </div>
       <button
         className="trace-drawer__close"
@@ -357,33 +370,16 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   )
 
   const tabsNav = (
-    <div
-      className="drawer-tabs-nav"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.35rem',
-        overflowX: 'auto',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        padding: '0.5rem 0',
-      }}
-    >
+    <div className="drawer-tabs-nav" role="tablist" aria-label="Trace investigation views">
       {TABS.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => setActiveTab(tab.id)}
-          style={{
-            background: activeTab === tab.id ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-            border: `1px solid ${activeTab === tab.id ? '#38bdf8' : 'transparent'}`,
-            color: activeTab === tab.id ? '#38bdf8' : '#94A3B8',
-            borderRadius: '4px',
-            padding: '4px 10px',
-            fontSize: '0.75rem',
-            fontWeight: activeTab === tab.id ? 700 : 500,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
+          className={activeTab === tab.id ? 'is-active' : ''}
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          aria-controls={`trace-tab-${tab.id}`}
         >
           {tab.label}
         </button>
@@ -398,10 +394,10 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
   if (isPanel) {
     return (
       <aside className="trace-drawer trace-drawer--panel trace-drawer--open" aria-label="Trace investigation workspace">
-        <div className="trace-drawer__panel" ref={drawerPanelRef} style={{ width: '100%', maxWidth: '850px' }}>
+        <div className="trace-drawer__panel" ref={drawerPanelRef}>
           {header}
           {tabsNav}
-          <div className="trace-drawer-content" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 180px)' }}>
+          <div className="trace-drawer-content" role="tabpanel" id={`trace-tab-${activeTab}`}>
             {renderTabContent()}
           </div>
         </div>
@@ -418,11 +414,10 @@ function TraceDetailsDrawer({ trace, onClose, variant = 'drawer' }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="trace-drawer-title"
-        style={{ width: '100%', maxWidth: '850px' }}
       >
         {header}
         {tabsNav}
-        <div className="trace-drawer-content" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 180px)', padding: '0.5rem 0' }}>
+        <div className="trace-drawer-content" role="tabpanel" id={`trace-tab-${activeTab}`}>
           {renderTabContent()}
         </div>
       </aside>

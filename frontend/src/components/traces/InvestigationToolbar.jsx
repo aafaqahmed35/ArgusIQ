@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const TRACE_STATUSES = ['OK', 'ERROR', 'UNSET']
 const LATENCY_FILTERS = [
@@ -16,30 +18,43 @@ const SORT_FIELDS = [
   { label: 'Trace ID', value: 'traceId' },
 ]
 
-function InvestigationToolbar({
-  query,
-  searchDraft,
-  onSearchDraftChange,
-  updateQuery,
-  clearFilters,
-  activeFilterCount,
-}) {
+function InvestigationToolbar({ query, searchDraft, onSearchDraftChange, updateQuery, clearFilters, activeFilterCount }) {
+  const [showAdvanced, setShowAdvanced] = useState(() => Boolean(
+    query.traceId || query.spanId || query.from || query.to || query.latency,
+  ))
+  const activeCriteria = [
+    ['Search', query.query],
+    ['Service', query.service],
+    ['Endpoint', query.endpoint],
+    ['Method', query.httpMethod],
+    ['Status', query.status],
+    ['Latency', query.latency],
+    ['Trace ID', query.traceId],
+    ['Span ID', query.spanId],
+    ['After', query.from],
+    ['Before', query.to],
+  ].filter(([, value]) => value)
+
   return (
     <section className="investigation-toolbar investigation-toolbar--explorer" aria-label="Trace investigation filters">
       <div className="investigation-toolbar__header">
         <div>
-          <p className="section-kicker">Investigation</p>
-          <h2>Trace Search</h2>
+          <p className="section-kicker">Investigation query</p>
+          <h2>Filter Traces</h2>
         </div>
         <div className="investigation-toolbar__actions">
           <span className="investigation-toolbar__count">{activeFilterCount} active</span>
           <button
-            className="investigation-toolbar__clear"
+            className="investigation-toolbar__toggle"
             type="button"
-            onClick={clearFilters}
-            disabled={activeFilterCount === 0}
+            aria-expanded={showAdvanced}
+            aria-controls="trace-advanced-filters"
+            onClick={() => setShowAdvanced((current) => !current)}
           >
-            Clear Filters
+            {showAdvanced ? 'Hide advanced' : 'Advanced'}
+          </button>
+          <button className="investigation-toolbar__clear" type="button" onClick={clearFilters} disabled={activeFilterCount === 0}>
+            Clear filters
           </button>
         </div>
       </div>
@@ -57,22 +72,12 @@ function InvestigationToolbar({
 
         <label className="investigation-control">
           <span>Service</span>
-          <input
-            type="text"
-            value={query.service}
-            placeholder="Exact service name"
-            onChange={(event) => updateQuery({ service: event.target.value })}
-          />
+          <input type="text" value={query.service} placeholder="Exact service name" onChange={(event) => updateQuery({ service: event.target.value })} />
         </label>
 
         <label className="investigation-control">
           <span>Endpoint</span>
-          <input
-            type="text"
-            value={query.endpoint}
-            placeholder="Path contains…"
-            onChange={(event) => updateQuery({ endpoint: event.target.value })}
-          />
+          <input type="text" value={query.endpoint} placeholder="Path contains…" onChange={(event) => updateQuery({ endpoint: event.target.value })} />
         </label>
 
         <label className="investigation-control">
@@ -92,45 +97,7 @@ function InvestigationToolbar({
         </label>
 
         <label className="investigation-control">
-          <span>Latency</span>
-          <select value={query.latency} onChange={(event) => updateQuery({ latency: event.target.value })}>
-            <option value="">All latency</option>
-            {LATENCY_FILTERS.map((filter) => <option value={filter.value} key={filter.value}>{filter.label}</option>)}
-          </select>
-        </label>
-
-        <label className="investigation-control">
-          <span>Trace ID</span>
-          <input
-            type="text"
-            value={query.traceId}
-            placeholder="Exact trace ID"
-            onChange={(event) => updateQuery({ traceId: event.target.value })}
-          />
-        </label>
-
-        <label className="investigation-control">
-          <span>Span ID</span>
-          <input
-            type="text"
-            value={query.spanId}
-            placeholder="Exact span ID"
-            onChange={(event) => updateQuery({ spanId: event.target.value })}
-          />
-        </label>
-
-        <label className="investigation-control">
-          <span>Started after (UTC)</span>
-          <input type="datetime-local" value={query.from} onChange={(event) => updateQuery({ from: event.target.value })} />
-        </label>
-
-        <label className="investigation-control">
-          <span>Started before (UTC)</span>
-          <input type="datetime-local" value={query.to} onChange={(event) => updateQuery({ to: event.target.value })} />
-        </label>
-
-        <label className="investigation-control">
-          <span>Sort field</span>
+          <span>Sort</span>
           <select value={query.sortBy} onChange={(event) => updateQuery({ sortBy: event.target.value })}>
             {SORT_FIELDS.map((field) => <option value={field.value} key={field.value}>{field.label}</option>)}
           </select>
@@ -144,6 +111,46 @@ function InvestigationToolbar({
           </select>
         </label>
       </div>
+
+      {activeCriteria.length > 0 ? (
+        <ul className="investigation-toolbar__criteria" aria-label="Active trace criteria">
+          {activeCriteria.map(([label, value]) => (
+            <li key={label}><strong>{label}</strong><span>{value}</span></li>
+          ))}
+        </ul>
+      ) : null}
+
+      {showAdvanced ? (
+        <div className="investigation-toolbar__advanced" id="trace-advanced-filters">
+          <label className="investigation-control">
+            <span>Latency</span>
+            <select value={query.latency} onChange={(event) => updateQuery({ latency: event.target.value })}>
+              <option value="">All latency</option>
+              {LATENCY_FILTERS.map((filter) => <option value={filter.value} key={filter.value}>{filter.label}</option>)}
+            </select>
+          </label>
+
+          <label className="investigation-control">
+            <span>Trace ID</span>
+            <input type="text" value={query.traceId} placeholder="Exact trace ID" onChange={(event) => updateQuery({ traceId: event.target.value })} />
+          </label>
+
+          <label className="investigation-control">
+            <span>Span ID</span>
+            <input type="text" value={query.spanId} placeholder="Exact span ID" onChange={(event) => updateQuery({ spanId: event.target.value })} />
+          </label>
+
+          <label className="investigation-control">
+            <span>Started after (UTC)</span>
+            <input type="datetime-local" value={query.from} onChange={(event) => updateQuery({ from: event.target.value })} />
+          </label>
+
+          <label className="investigation-control">
+            <span>Started before (UTC)</span>
+            <input type="datetime-local" value={query.to} onChange={(event) => updateQuery({ to: event.target.value })} />
+          </label>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -1,161 +1,70 @@
 import { backendUtcEpochMillis } from '../../lib/backendDateTime'
 
-function getStatusColor(statusCode) {
-  const code = (statusCode || '').toUpperCase()
-  if (code === 'ERROR' || code === '5XX' || code === '500') return '#EF4444'
-  if (code === 'WARN' || code === 'UNSET' || code === '4XX' || code === '400') return '#F59E0B'
-  return '#10B981'
+function statusTone(statusCode) {
+  const code = String(statusCode || 'UNKNOWN').toUpperCase()
+  if (code === 'ERROR' || code === '5XX' || code === '500') return 'error'
+  if (code === 'WARN' || code === 'UNSET' || code === '4XX' || code === '400') return 'warning'
+  if (code === 'OK') return 'success'
+  return 'neutral'
 }
 
 function InvestigationTimeline({ spans = [], traceSummary = {}, onSelectSpan }) {
   if (!Array.isArray(spans) || spans.length === 0) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#94A3B8' }}>
-        No events available to render narrative timeline.
-      </div>
-    )
+    return <div className="trace-visualization-empty">No span starts are available for the timeline.</div>
   }
 
-  // Determine min start time
-  let minStart = Number.MAX_SAFE_INTEGER
-  spans.forEach((s) => {
-    const t = backendUtcEpochMillis(s.startTime)
-    if (t !== null && t < minStart) minStart = t
-  })
-  if (minStart === Number.MAX_SAFE_INTEGER) minStart = 0
-
-  // Sort spans chronologically by start time
+  const observedStartTimes = spans
+    .map((span) => backendUtcEpochMillis(span.startTime))
+    .filter((value) => value !== null)
+  const minStart = observedStartTimes.length > 0 ? Math.min(...observedStartTimes) : 0
   const timelineEvents = spans.map((span) => {
     const startTime = backendUtcEpochMillis(span.startTime)
-    const offsetMs = startTime !== null ? Math.max(0, startTime - minStart) : 0
-    const durationMs = span.durationMs || 0
-
     return {
       ...span,
-      offsetMs,
-      durationMs,
+      offsetMs: startTime !== null ? Math.max(0, startTime - minStart) : 0,
+      durationMs: span.durationMs ?? null,
     }
-  })
-
-  timelineEvents.sort((a, b) => a.offsetMs - b.offsetMs)
+  }).sort((a, b) => a.offsetMs - b.offsetMs)
 
   return (
-    <div
-      className="investigation-timeline-panel"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem',
-        background: '#07131F',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '8px',
-        padding: '1.25rem',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <section className="investigation-timeline-panel" aria-labelledby="trace-timeline-title">
+      <div className="investigation-timeline-panel__header">
         <div>
-          <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Investigation Narrative
-          </span>
-          <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#F5F7FA' }}>Chronological Request Story</h3>
+          <p className="section-kicker">Start-time order</p>
+          <h3 id="trace-timeline-title">Observed Span Starts</h3>
         </div>
-        <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontFamily: 'monospace' }}>
-          {timelineEvents.length} Sequential Events
-        </span>
+        <span>{timelineEvents.length} observed events</span>
       </div>
+      <p className="investigation-timeline-panel__note">
+        Chronological ordering reflects recorded start timestamps; it does not prove sequential execution or causation.
+      </p>
 
-      {/* Narrative Event List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', position: 'relative' }}>
-        {/* Connecting Vertical Guide Line */}
-        <div
-          style={{
-            position: 'absolute',
-            left: '52px',
-            top: '12px',
-            bottom: '12px',
-            width: '2px',
-            background: 'rgba(56, 189, 248, 0.2)',
-            zIndex: 1,
-          }}
-        />
-
-        {timelineEvents.map((evt, idx) => {
-          const statusColor = getStatusColor(evt.statusCode)
-
+      <div className="investigation-timeline-panel__events">
+        {timelineEvents.map((event, index) => {
+          const tone = statusTone(event.statusCode)
+          const service = event.serviceName || traceSummary?.serviceName || 'Unknown service'
           return (
-            <div
-              key={evt.spanId || idx}
-              onClick={() => onSelectSpan?.(evt)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '60px 24px 1fr',
-                alignItems: 'center',
-                gap: '0.75rem',
-                zIndex: 2,
-                cursor: 'pointer',
-                padding: '0.5rem',
-                borderRadius: '6px',
-                background: 'rgba(10, 25, 47, 0.6)',
-                border: '1px solid rgba(255, 255, 255, 0.05)',
-                transition: 'background 0.15s ease',
-              }}
+            <button
+              type="button"
+              key={event.spanId || `${event.name}-${index}`}
+              className="investigation-timeline-event"
+              onClick={() => onSelectSpan?.(event)}
             >
-              {/* Millisecond Offset Badge */}
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  color: '#38bdf8',
-                  fontFamily: 'monospace',
-                  textAlign: 'right',
-                }}
-              >
-                +{evt.offsetMs} ms
-              </div>
-
-              {/* Node Dot */}
-              <div
-                style={{
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  backgroundColor: statusColor,
-                  border: '2px solid #07131F',
-                  boxShadow: `0 0 6px ${statusColor}`,
-                  margin: '0 auto',
-                }}
-              />
-
-              {/* Narrative Content */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: '#D4AF37',
-                      background: 'rgba(212, 175, 55, 0.15)',
-                      border: '1px solid rgba(212, 175, 55, 0.3)',
-                      padding: '1px 6px',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {evt.serviceName || traceSummary?.serviceName || 'AtlasBank'}
-                  </span>
-                  <strong style={{ fontSize: '0.85rem', color: '#F5F7FA' }}>{evt.name}</strong>
-                  <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontFamily: 'monospace', marginLeft: 'auto' }}>
-                    ({evt.durationMs} ms)
-                  </span>
-                </div>
-                <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
-                  Kind: <code>{evt.kind || 'INTERNAL'}</code> · Status: <span style={{ color: statusColor }}>{evt.statusCode || 'OK'}</span>
+              <span className="investigation-timeline-event__offset">+{event.offsetMs} ms</span>
+              <span className={`span-status-dot span-status-dot--${tone}`} aria-hidden="true" />
+              <span className="investigation-timeline-event__body">
+                <span>
+                  <strong>{service}</strong>
+                  <b>{event.name || 'Unnamed span'}</b>
+                  <code>{event.durationMs === null ? 'Duration unavailable' : `${event.durationMs} ms`}</code>
                 </span>
-              </div>
-            </div>
+                <small>Kind: {event.kind || 'UNKNOWN'} · Status: {event.statusCode || 'UNKNOWN'}</small>
+              </span>
+            </button>
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }
 

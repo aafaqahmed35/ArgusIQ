@@ -10,7 +10,9 @@ function CriticalPathBanner({ criticalPathInfo }) {
   const {
     status,
     issues,
+    algorithm,
     totalCriticalPathMs,
+    traceWallClockMs,
     criticalPathPercentage,
     largestContributor,
     criticalPathNodes,
@@ -18,57 +20,28 @@ function CriticalPathBanner({ criticalPathInfo }) {
   const isUnavailable = status === 'UNAVAILABLE'
 
   return (
-    <div
-      className="critical-path-banner"
-      style={{
-        background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, rgba(10, 25, 47, 0.95) 100%)',
-        border: '1px solid rgba(212, 175, 55, 0.4)',
-        borderRadius: '8px',
-        padding: '1rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.75rem',
-        boxShadow: '0 4px 20px rgba(212, 175, 55, 0.08)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '1.2rem', color: '#D4AF37' }}>⚡</span>
-          <strong style={{ fontSize: '0.95rem', color: '#D4AF37', letterSpacing: '0.02em' }}>
-            Structural Critical Path
-          </strong>
+    <section className="critical-path-banner" aria-labelledby="critical-path-title">
+      <div className="critical-path-banner__header">
+        <div>
+          <p className="section-kicker">Backend structural analysis</p>
+          <h3 id="critical-path-title">Structural Critical Path</h3>
         </div>
-        <span
-          style={{
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            color: status === 'COMPLETE' ? '#86EFAC' : '#FBBF24',
-            background: 'rgba(212, 175, 55, 0.12)',
-            border: '1px solid currentColor',
-            padding: '2px 8px',
-            borderRadius: '12px',
-          }}
-        >
+        <span className={`critical-path-banner__status critical-path-banner__status--${status.toLowerCase()}`}>
           {status}
         </span>
       </div>
 
       {isUnavailable ? (
-        <div style={{ color: '#FBBF24', fontSize: '0.82rem' }}>
-          A complete structural path cannot be derived from this trace graph.
-        </div>
+        <p className="critical-path-banner__unavailable">
+          A structural path cannot be derived from the available trace graph.
+        </p>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-            gap: '0.75rem',
-          }}
-        >
-          <Metric label="Critical Path Time" value={`${totalCriticalPathMs} ms`} />
-          <Metric label="Wall-clock Coverage" value={`${criticalPathPercentage}%`} />
+        <div className="critical-path-banner__metrics">
+          <Metric label="Trace wall clock" value={`${traceWallClockMs} ms`} />
+          <Metric label="Critical-path duration" value={`${totalCriticalPathMs} ms`} />
+          <Metric label="Wall-clock coverage" value={`${criticalPathPercentage}%`} />
           <Metric
-            label="Largest Contribution"
+            label="Largest path contribution"
             value={largestContributor
               ? `${largestContributor.serviceName}: ${largestContributor.name} (${largestContributor.contributionDurationMs} ms)`
               : 'None'}
@@ -76,67 +49,42 @@ function CriticalPathBanner({ criticalPathInfo }) {
         </div>
       )}
 
-      {issues.length > 0 && (
-        <div style={{ fontSize: '0.75rem', color: '#FBBF24' }}>
-          Limitations: {issues.map(readableIssue).join(', ')}
-        </div>
-      )}
+      <p className="critical-path-banner__method">
+        Algorithm: <code>{algorithm || 'Unavailable'}</code>. Parent links and timestamps provide structural evidence;
+        they do not prove synchronous waiting, causation, or root cause.
+      </p>
 
-      <div style={{ color: '#94A3B8', fontSize: '0.72rem' }}>
-        Parent links and timestamps provide structural evidence; they do not prove synchronous blocking.
-      </div>
+      {issues.length > 0 ? (
+        <p className="critical-path-banner__limitations">
+          <strong>Evidence limitations:</strong> {issues.map(readableIssue).join(', ')}
+        </p>
+      ) : null}
 
-      {criticalPathNodes.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94A3B8' }}>Contributing spans:</div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '0.35rem',
-              fontSize: '0.75rem',
-            }}
-          >
+      {criticalPathNodes.length > 0 ? (
+        <div className="critical-path-banner__path">
+          <strong>Ordered structural path</strong>
+          <div className="critical-path-banner__spans">
             {criticalPathNodes.map((node, index) => (
               <React.Fragment key={node.spanId || index}>
-                <span
-                  style={{
-                    background: 'rgba(212, 175, 55, 0.15)',
-                    border: '1px solid rgba(212, 175, 55, 0.3)',
-                    color: '#F5F7FA',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                  }}
-                >
-                  <strong style={{ color: '#D4AF37' }}>{node.serviceName}</strong>: {node.name}
+                <span>
+                  <strong>{node.serviceName}</strong>: {node.name}
                   {' '}({node.contributionDurationMs} ms contribution)
                 </span>
-                {index < criticalPathNodes.length - 1 && (
-                  <span style={{ color: '#D4AF37', fontWeight: 'bold' }}>➔</span>
-                )}
+                {index < criticalPathNodes.length - 1 ? <b aria-hidden="true">→</b> : null}
               </React.Fragment>
             ))}
           </div>
         </div>
-      )}
-    </div>
+      ) : null}
+    </section>
   )
 }
 
 function Metric({ label, value }) {
   return (
-    <div
-      style={{
-        background: 'rgba(7, 19, 31, 0.8)',
-        border: '1px solid rgba(212, 175, 55, 0.2)',
-        borderRadius: '6px',
-        padding: '0.5rem 0.75rem',
-      }}
-    >
-      <div style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase' }}>{label}</div>
-      <strong style={{ fontSize: '0.9rem', color: '#F5F7FA' }}>{value}</strong>
+    <div className="critical-path-banner__metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   )
 }

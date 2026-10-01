@@ -35,121 +35,44 @@ function SpanWaterfall({
 
   if (!rootNodes || rootNodes.length === 0) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#94A3B8' }}>
+      <div className="trace-visualization-empty">
         No spans available to render waterfall timeline.
       </div>
     )
   }
 
   return (
-    <div className="span-waterfall-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {/* Header Controls & Zoom Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.4rem 0.75rem',
-          background: 'rgba(10, 25, 47, 0.6)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '6px',
-          fontSize: '0.75rem',
-          color: '#94A3B8',
-        }}
-      >
+    <div className="span-waterfall-container">
+      <div className="trace-visualization-toolbar">
         <div>
-          Total Trace Duration: <strong style={{ color: '#F5F7FA' }}>{totalDurationMs} ms</strong> ({spanMap.size} spans)
+          Wall-clock trace duration: <strong>{totalDurationMs} ms</strong> ({spanMap.size} spans)
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F5F7FA',
-              borderRadius: '4px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-            }}
-          >
-            Zoom -
+        <div className="trace-visualization-toolbar__actions">
+          <button className="trace-visualization-button" type="button" onClick={handleZoomOut} aria-label="Zoom waterfall out">
+            −
           </button>
-          <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontFamily: 'monospace' }}>
+          <span className="trace-visualization-toolbar__zoom">
             {Math.round(zoomLevel * 100)}%
           </span>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F5F7FA',
-              borderRadius: '4px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-            }}
-          >
-            Zoom +
+          <button className="trace-visualization-button" type="button" onClick={handleZoomIn} aria-label="Zoom waterfall in">
+            +
           </button>
-          <button
-            type="button"
-            onClick={handleResetZoom}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F5F7FA',
-              borderRadius: '4px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-            }}
-          >
+          <button className="trace-visualization-button" type="button" onClick={handleResetZoom}>
             Reset
           </button>
         </div>
       </div>
 
-      {/* Main Waterfall Timeline Table */}
-      <div
-        style={{
-          background: '#07131F',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '6px',
-          overflowX: 'auto',
-          maxHeight: '520px',
-        }}
-      >
-        {/* Sticky Millisecond Time Axis Ruler */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '260px 1fr',
-            background: '#0A192F',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: '0.4rem 0.5rem',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-          }}
-        >
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>
+      <div className="span-waterfall-container__rows">
+        <div className="waterfall-ruler">
+          <div className="waterfall-ruler__label">
             Service / Operation
           </div>
-          <div style={{ position: 'relative', height: '20px', width: '100%' }}>
+          <div className="waterfall-ruler__ticks">
             {rulerTicks.map((tick, i) => (
               <span
                 key={i}
-                style={{
-                  position: 'absolute',
-                  left: `${tick.pct * zoomLevel}%`,
-                  fontSize: '0.65rem',
-                  fontFamily: 'monospace',
-                  color: '#94A3B8',
-                  transform: 'translateX(-50%)',
-                }}
+                style={{ '--waterfall-tick': `${tick.pct * zoomLevel}%` }}
               >
                 {tick.label}
               </span>

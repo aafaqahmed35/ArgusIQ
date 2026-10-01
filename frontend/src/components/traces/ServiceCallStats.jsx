@@ -9,83 +9,53 @@ function ServiceCallStats({ spans = [], totalTraceDurationMs = 1 }) {
 
   if (serviceStats.length === 0) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#94A3B8' }}>
+      <div className="trace-visualization-empty">
         No service telemetry available to compute statistics.
       </div>
     )
   }
 
   return (
-    <div
-      className="service-call-stats-panel"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem',
-        background: '#07131F',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '8px',
-        padding: '1.25rem',
-      }}
-    >
+    <section className="service-call-stats-panel" aria-labelledby="service-stats-title">
       <div>
-        <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Service Statistics
-        </span>
-        <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#F5F7FA' }}>Per-Service Latency & Contribution Breakdown</h3>
+        <p className="section-kicker">Derived from available spans</p>
+        <h3 id="service-stats-title">Per-Service Span Durations</h3>
       </div>
+      <p className="service-call-stats-panel__note">Shares use summed span durations and may exceed trace wall-clock time when spans overlap.</p>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+      <div className="service-call-stats-panel__table">
+        <table>
           <thead>
-            <tr style={{ background: '#0A192F', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', textAlign: 'left', color: '#94A3B8' }}>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Rank</th>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Service Name</th>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Calls</th>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Avg Latency</th>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Max Latency</th>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Errors</th>
-              <th style={{ padding: '0.5rem 0.75rem' }}>Trace Contribution</th>
+            <tr>
+              <th scope="col">Rank</th>
+              <th scope="col">Service</th>
+              <th scope="col">Spans</th>
+              <th scope="col">Average span</th>
+              <th scope="col">Longest span</th>
+              <th scope="col">Errors</th>
+              <th scope="col">Summed duration share</th>
             </tr>
           </thead>
           <tbody>
             {serviceStats.map((item) => (
-              <tr
-                key={item.serviceName}
-                style={{
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                  background: item.isSlowest ? 'rgba(212, 175, 55, 0.05)' : 'transparent',
-                }}
-              >
-                <td style={{ padding: '0.5rem 0.75rem', fontWeight: 700, color: item.isSlowest ? '#D4AF37' : '#94A3B8' }}>
+              <tr key={item.serviceName} className={item.isLargestDurationContributor ? 'is-largest-contributor' : ''}>
+                <td>
                   #{item.rank}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600, color: '#F5F7FA' }}>
-                  {item.serviceName} {item.isSlowest && <span style={{ color: '#D4AF37', fontSize: '0.7rem' }}>(Slowest)</span>}
+                <td>
+                  <strong>{item.serviceName}</strong>
+                  {item.isLargestDurationContributor ? <small>Largest summed duration</small> : null}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem', color: '#38bdf8' }}>{item.requestCount}</td>
-                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: '#F5F7FA' }}>{item.avgDurationMs} ms</td>
-                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: item.isSlowest ? '#D4AF37' : '#F5F7FA' }}>
-                  {item.maxDurationMs} ms
-                </td>
-                <td style={{ padding: '0.5rem 0.75rem', color: item.errorCount > 0 ? '#EF4444' : '#10B981', fontWeight: 600 }}>
-                  {item.errorCount}
-                </td>
-                <td style={{ padding: '0.5rem 0.75rem', width: '160px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ flexGrow: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          width: `${item.contributionPct}%`,
-                          height: '100%',
-                          background: item.isSlowest ? '#D4AF37' : '#38bdf8',
-                          borderRadius: '3px',
-                        }}
-                      />
-                    </div>
-                    <span style={{ fontSize: '0.75rem', color: item.isSlowest ? '#D4AF37' : '#94A3B8', fontFamily: 'monospace' }}>
-                      {item.contributionPct}%
+                <td>{item.requestCount}</td>
+                <td><code>{item.avgDurationMs} ms</code></td>
+                <td><code>{item.maxDurationMs} ms</code></td>
+                <td><span className={item.errorCount > 0 ? 'text-error' : ''}>{item.errorCount}</span></td>
+                <td>
+                  <div className="service-call-stats-panel__share">
+                    <span className="service-call-stats-panel__bar" aria-hidden="true">
+                      <span style={{ '--service-share': `${item.contributionPct}%` }} />
                     </span>
+                    <code>{item.contributionPct}%</code>
                   </div>
                 </td>
               </tr>
@@ -93,7 +63,7 @@ function ServiceCallStats({ spans = [], totalTraceDurationMs = 1 }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   )
 }
 

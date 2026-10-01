@@ -57,6 +57,6 @@ export function calculateServiceStats(spans = []) {
   return results.map((item, index) => ({
     ...item,
     rank: index + 1,
-    isSlowest: index === 0,
+    isLargestDurationContributor: index === 0,
   }))
 }

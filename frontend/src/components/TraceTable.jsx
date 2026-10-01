@@ -10,6 +10,7 @@ const DURATION_FIELDS = ['durationMs', 'executionTimeMs', 'responseTime', 'durat
 const SERVICE_FIELDS = ['serviceName', 'service', 'applicationName', 'appName']
 const OPERATION_FIELDS = ['rootSpanName', 'operationName', 'name']
 const TRACE_ID_FIELDS = ['traceId', 'id']
+const SPAN_COUNT_FIELDS = ['spanCount']
 
 function getFieldValue(trace, fields, fallback = '—') {
   const key = fields.find((field) => trace?.[field] !== undefined && trace?.[field] !== null && trace?.[field] !== '')
@@ -28,8 +29,11 @@ function formatDate(value) {
   }
 
   return new Intl.DateTimeFormat('en', {
-    dateStyle: 'medium',
-    timeStyle: 'medium',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   }).format(date)
 }
 
@@ -47,7 +51,7 @@ function formatDuration(value) {
   return `${numericValue.toLocaleString()} ms`
 }
 
-function getStatusBadge(status, durationMs) {
+function getStatusBadge(status) {
   const statusStr = String(status || '').toUpperCase()
   const numericStatus = Number(status)
 
@@ -55,15 +59,15 @@ function getStatusBadge(status, durationMs) {
     return { label: 'ERROR', className: 'status-pill status-pill--error' }
   }
 
-  if (
-    statusStr === 'UNSET' ||
-    (!Number.isNaN(numericStatus) && numericStatus >= 400 && numericStatus < 500) ||
-    (Number(durationMs) >= 1000)
-  ) {
-    return { label: statusStr === 'UNSET' ? 'WARN' : statusStr || 'WARN', className: 'status-pill status-pill--warning' }
+  if (statusStr === 'UNSET' || (!Number.isNaN(numericStatus) && numericStatus >= 400 && numericStatus < 500)) {
+    return { label: statusStr || String(numericStatus), className: 'status-pill status-pill--warning' }
   }
 
-  return { label: statusStr === 'OK' ? 'OK' : statusStr || 'OK', className: 'status-pill status-pill--success' }
+  if (statusStr === 'OK' || (!Number.isNaN(numericStatus) && numericStatus >= 200 && numericStatus < 400)) {
+    return { label: statusStr || String(numericStatus), className: 'status-pill status-pill--success' }
+  }
+
+  return { label: statusStr || 'UNKNOWN', className: 'status-pill status-pill--neutral' }
 }
 
 function formatShortTraceId(traceId) {
@@ -89,9 +93,10 @@ function TraceTable({
     e.stopPropagation()
     if (!traceId || traceId === '—') return
 
-    navigator.clipboard.writeText(String(traceId))
-    setCopiedTraceId(traceId)
-    setTimeout(() => setCopiedTraceId(null), 2000)
+    navigator.clipboard?.writeText(String(traceId)).then(() => {
+      setCopiedTraceId(traceId)
+      setTimeout(() => setCopiedTraceId(null), 2000)
+    }).catch(() => {})
   }
 
   if (isLoading) {
@@ -134,19 +139,22 @@ function TraceTable({
             <th scope="col">Method</th>
             <th scope="col">Endpoint</th>
             <th scope="col">Duration</th>
+            <th scope="col">Spans</th>
             <th scope="col">Trace ID</th>
             <th scope="col">Timestamp</th>
+            {onTraceSelect ? <th scope="col"><span className="sr-only">Investigation action</span></th> : null}
           </tr>
         </thead>
         <tbody>
           {traces.map((trace) => {
-            const rawStatus = getFieldValue(trace, STATUS_FIELDS, 'OK')
-            const duration = getFieldValue(trace, DURATION_FIELDS, 0)
-            const badge = getStatusBadge(rawStatus, duration)
-            const service = getFieldValue(trace, SERVICE_FIELDS, 'AtlasBank')
-            const operation = getFieldValue(trace, OPERATION_FIELDS, 'HTTP Request')
-            const method = getFieldValue(trace, METHOD_FIELDS, 'OTLP')
-            const path = getFieldValue(trace, PATH_FIELDS, '/')
+            const rawStatus = getFieldValue(trace, STATUS_FIELDS, '—')
+            const duration = getFieldValue(trace, DURATION_FIELDS, '—')
+            const badge = getStatusBadge(rawStatus)
+            const service = getFieldValue(trace, SERVICE_FIELDS, 'Unknown service')
+            const operation = getFieldValue(trace, OPERATION_FIELDS, 'Unknown operation')
+            const method = getFieldValue(trace, METHOD_FIELDS, '—')
+            const path = getFieldValue(trace, PATH_FIELDS, '—')
+            const spanCount = getFieldValue(trace, SPAN_COUNT_FIELDS, '—')
             const traceId = getFieldValue(trace, TRACE_ID_FIELDS, '—')
             const timestamp = getFieldValue(trace, DATE_FIELDS, null)
             const rowKey = getTraceKey(trace)
@@ -155,32 +163,17 @@ function TraceTable({
 
             const rowClassName = [
               'trace-table__row',
-              onTraceSelect ? 'trace-table__row--interactive' : '',
               isSelected ? 'trace-table__row--selected' : '',
               isHighlighted ? 'trace-table__row--highlight' : '',
             ]
               .filter(Boolean)
               .join(' ')
 
-            const handleTraceSelect = () => {
-              onTraceSelect?.(trace)
-            }
-
-            const handleTraceSelectKeyDown = (event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                handleTraceSelect()
-              }
-            }
-
             return (
               <tr
                 className={rowClassName}
                 key={rowKey}
-                onClick={handleTraceSelect}
-                onKeyDown={handleTraceSelectKeyDown}
-                role={onTraceSelect ? 'button' : undefined}
-                tabIndex={onTraceSelect ? 0 : undefined}
+                aria-selected={isSelected || undefined}
               >
                 <td>
                   <span className={badge.className}>{badge.label}</span>
@@ -196,29 +189,35 @@ function TraceTable({
                   {path}
                 </td>
                 <td>{formatDuration(duration)}</td>
+                <td className="trace-table__numeric">{spanCount}</td>
                 <td>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <div className="trace-table__identity">
                     <code title={String(traceId)}>{formatShortTraceId(traceId)}</code>
                     {traceId !== '—' && (
                       <button
                         type="button"
                         onClick={(e) => handleCopyTraceId(e, traceId)}
-                        title="Copy Trace ID"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: copiedTraceId === traceId ? '#10b981' : '#94a3b8',
-                          cursor: 'pointer',
-                          padding: '2px 4px',
-                          fontSize: '0.75rem',
-                        }}
+                        className="trace-table__copy"
+                        aria-label={`Copy trace ID ${traceId}`}
                       >
-                        {copiedTraceId === traceId ? '✓' : '📋'}
+                        {copiedTraceId === traceId ? 'Copied' : 'Copy'}
                       </button>
                     )}
                   </div>
                 </td>
                 <td>{formatDate(timestamp)}</td>
+                {onTraceSelect ? (
+                  <td>
+                    <button
+                      type="button"
+                      className="trace-table__inspect"
+                      aria-pressed={isSelected}
+                      onClick={() => onTraceSelect(trace)}
+                    >
+                      {isSelected ? 'Selected' : 'Inspect'}
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             )
           })}

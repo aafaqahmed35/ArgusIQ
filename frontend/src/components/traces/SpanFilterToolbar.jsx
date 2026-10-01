@@ -1,3 +1,11 @@
+const FILTER_MODES = [
+  { id: 'all', label: 'All spans' },
+  { id: 'errors', label: 'Errors only' },
+  { id: 'critical', label: 'Critical path' },
+  { id: 'db', label: 'Database' },
+  { id: 'http', label: 'HTTP' },
+]
+
 function SpanFilterToolbar({
   searchQuery,
   onSearchChange,
@@ -8,99 +16,42 @@ function SpanFilterToolbar({
   availableServices = [],
 }) {
   return (
-    <div
-      className="span-filter-toolbar"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-        padding: '0.6rem 0.85rem',
-        background: '#0A192F',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '6px',
-        fontSize: '0.8rem',
-      }}
-    >
-      {/* Search Input */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexGrow: 1, minWidth: '220px' }}>
-        <span style={{ color: '#94A3B8' }}>🔍</span>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Filter spans by name, service, span ID, status..."
-          style={{
-            width: '100%',
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '4px',
-            color: '#F5F7FA',
-            padding: '4px 8px',
-            fontSize: '0.75rem',
-            outline: 'none',
-          }}
-        />
-        {searchQuery && (
-          <button
-            type="button"
-            onClick={() => onSearchChange('')}
-            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem' }}
-          >
-            ✕
-          </button>
-        )}
-      </div>
+    <div className="span-filter-toolbar" aria-label="Span view filters">
+      <label className="span-filter-toolbar__search">
+        <span>Find spans</span>
+        <span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Name, service, span ID, or status"
+          />
+          {searchQuery ? (
+            <button type="button" onClick={() => onSearchChange('')} aria-label="Clear span search">Clear</button>
+          ) : null}
+        </span>
+      </label>
 
-      {/* Service Dropdown Filter */}
-      {availableServices.length > 1 && (
-        <select
-          value={serviceFilter}
-          onChange={(e) => onServiceFilterChange(e.target.value)}
-          style={{
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '4px',
-            color: '#F5F7FA',
-            padding: '4px 8px',
-            fontSize: '0.75rem',
-            outline: 'none',
-          }}
-        >
-          <option value="all">All Services ({availableServices.length})</option>
-          {availableServices.map((svc) => (
-            <option key={svc} value={svc}>
-              {svc}
-            </option>
-          ))}
-        </select>
-      )}
+      {availableServices.length > 1 ? (
+        <label className="span-filter-toolbar__service">
+          <span>Service</span>
+          <select value={serviceFilter} onChange={(event) => onServiceFilterChange(event.target.value)}>
+            <option value="all">All services ({availableServices.length})</option>
+            {availableServices.map((service) => <option key={service} value={service}>{service}</option>)}
+          </select>
+        </label>
+      ) : null}
 
-      {/* Quick Mode Toggles */}
-      <div style={{ display: 'flex', gap: '0.25rem' }}>
-        {[
-          { id: 'all', label: 'All Spans' },
-          { id: 'errors', label: 'Errors Only 🔴' },
-          { id: 'critical', label: 'Critical Path ⚡' },
-          { id: 'db', label: 'Database' },
-          { id: 'http', label: 'HTTP' },
-        ].map((btn) => (
+      <div className="span-filter-toolbar__modes" role="group" aria-label="Span type">
+        {FILTER_MODES.map((mode) => (
           <button
-            key={btn.id}
+            key={mode.id}
             type="button"
-            onClick={() => onFilterModeChange(btn.id)}
-            style={{
-              background: filterMode === btn.id ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
-              border: `1px solid ${filterMode === btn.id ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
-              color: filterMode === btn.id ? '#38bdf8' : '#94A3B8',
-              borderRadius: '4px',
-              padding: '3px 8px',
-              fontSize: '0.7rem',
-              fontWeight: filterMode === btn.id ? 700 : 500,
-              cursor: 'pointer',
-            }}
+            className={filterMode === mode.id ? 'is-active' : ''}
+            aria-pressed={filterMode === mode.id}
+            onClick={() => onFilterModeChange(mode.id)}
           >
-            {btn.label}
+            {mode.label}
           </button>
         ))}
       </div>

@@ -86,77 +86,37 @@ function SpanTree({
 
   if (!rootNodes || rootNodes.length === 0) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#94A3B8' }}>
+      <div className="trace-visualization-empty">
         No spans found for tree visualization.
       </div>
     )
   }
 
   return (
-    <div className="span-tree-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {/* Controls Bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.4rem 0.75rem',
-          background: 'rgba(10, 25, 47, 0.6)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '6px',
-          fontSize: '0.75rem',
-          color: '#94A3B8',
-        }}
-      >
+    <div className="span-tree-container">
+      <div className="trace-visualization-toolbar">
         <span>
           Showing <strong>{flatNodes.length}</strong> of <strong>{spanMap.size}</strong> spans
         </span>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="trace-visualization-toolbar__actions">
           <button
+            className="trace-visualization-button"
             type="button"
             onClick={handleExpandAll}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F5F7FA',
-              borderRadius: '4px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-            }}
           >
-            Expand All
+            Expand all
           </button>
           <button
+            className="trace-visualization-button"
             type="button"
             onClick={handleCollapseAll}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F5F7FA',
-              borderRadius: '4px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-            }}
           >
-            Collapse All
+            Collapse all
           </button>
         </div>
       </div>
 
-      {/* Tree Rows Container */}
-      <div
-        tabIndex={0}
-        style={{
-          background: '#07131F',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '6px',
-          overflowX: 'auto',
-          maxHeight: '520px',
-          outline: 'none',
-        }}
-      >
+      <div className="span-tree-container__rows" aria-label="Trace span hierarchy">
         {flatNodes.map((node) => (
           <SpanNode
             key={node.spanId}

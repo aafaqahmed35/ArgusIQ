@@ -12,7 +12,8 @@ function getStatusBadge(status) {
   const code = (status || '').toUpperCase()
   if (code === 'ERROR') return { label: 'ERROR', color: '#EF4444' }
   if (code === 'WARN' || code === 'UNSET') return { label: 'WARN', color: '#F59E0B' }
-  return { label: 'OK', color: '#10B981' }
+  if (code === 'OK') return { label: 'OK', color: '#10B981' }
+  return { label: code || 'UNKNOWN', color: '#94A3B8' }
 }
 
 function SpanInspector({ selectedSpan, spanMap = new Map() }) {
@@ -134,8 +135,9 @@ function SpanInspector({ selectedSpan, spanMap = new Map() }) {
             <span style={{ color: '#94A3B8' }}>Span ID: </span>
             <code style={{ color: '#F5F7FA' }}>{spanId}</code>
             <button
-              type="button"
-              onClick={(e) => handleCopy(e, spanId, 'spanId')}
+            type="button"
+            onClick={(e) => handleCopy(e, spanId, 'spanId')}
+            aria-label="Copy span ID"
               style={{ background: 'none', border: 'none', color: copiedKey === 'spanId' ? '#10B981' : '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', marginLeft: '4px' }}
             >
               {copiedKey === 'spanId' ? '✓' : '📋'}
@@ -147,6 +149,7 @@ function SpanInspector({ selectedSpan, spanMap = new Map() }) {
             <button
               type="button"
               onClick={(e) => handleCopy(e, traceId, 'traceId')}
+              aria-label="Copy trace ID"
               style={{ background: 'none', border: 'none', color: copiedKey === 'traceId' ? '#10B981' : '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', marginLeft: '4px' }}
             >
               {copiedKey === 'traceId' ? '✓' : '📋'}

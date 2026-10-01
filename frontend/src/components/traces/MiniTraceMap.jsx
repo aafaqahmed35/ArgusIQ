@@ -1,113 +1,70 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 
 function MiniTraceMap({ spans = [], traceSummary = {} }) {
   const topology = useMemo(() => {
     if (!Array.isArray(spans) || spans.length === 0) {
-      const rootService = traceSummary?.serviceName || 'AtlasBank'
-      return {
-        services: [rootService],
-        edges: [],
-      }
+      return { services: traceSummary?.serviceName ? [traceSummary.serviceName] : [], edges: [] }
     }
 
     const services = new Set()
     const edgesMap = new Map()
+    const spanMap = new Map(spans.filter((span) => span.spanId).map((span) => [span.spanId, span]))
 
     spans.forEach((span) => {
-      const sName = span.serviceName || traceSummary?.serviceName || 'AtlasBank'
-      services.add(sName)
-    })
+      const service = span.serviceName || traceSummary?.serviceName
+      if (service) services.add(service)
 
-    // Map parent service to child service
-    const spanMap = new Map()
-    spans.forEach((s) => spanMap.set(s.spanId, s))
+      const parent = span.parentSpanId ? spanMap.get(span.parentSpanId) : null
+      const parentService = parent?.serviceName || traceSummary?.serviceName
+      if (!parentService || !service || parentService === service) return
 
-    spans.forEach((span) => {
-      if (span.parentSpanId && spanMap.has(span.parentSpanId)) {
-        const parent = spanMap.get(span.parentSpanId)
-        const parentService = parent.serviceName || traceSummary?.serviceName || 'AtlasBank'
-        const childService = span.serviceName || traceSummary?.serviceName || 'AtlasBank'
-
-        if (parentService !== childService) {
-          const edgeKey = `${parentService}➔${childService}`
-          edgesMap.set(edgeKey, (edgesMap.get(edgeKey) || 0) + 1)
-        }
-      }
+      const edgeKey = `${parentService}\u0000${service}`
+      edgesMap.set(edgeKey, (edgesMap.get(edgeKey) || 0) + 1)
     })
 
     return {
-      services: Array.from(services),
-      edges: Array.from(edgesMap.entries()).map(([key, count]) => {
-        const [from, to] = key.split('➔')
-        return { from, to, count }
-      }),
+      services: Array.from(services).sort(),
+      edges: Array.from(edgesMap.entries())
+        .map(([key, count]) => {
+          const [from, to] = key.split('\u0000')
+          return { from, to, count }
+        })
+        .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)),
     }
   }, [spans, traceSummary])
 
+  if (topology.services.length === 0) {
+    return <div className="trace-visualization-empty">No service identity is available for this trace.</div>
+  }
+
   return (
-    <div
-      className="mini-trace-map-panel"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem',
-        background: '#07131F',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '8px',
-        padding: '1.25rem',
-      }}
-    >
+    <section className="trace-topology" aria-labelledby="trace-topology-title">
       <div>
-        <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Topology Graph
-        </span>
-        <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#F5F7FA' }}>Service Communication Flow</h3>
+        <p className="section-kicker">Observed span relationships</p>
+        <h3 id="trace-topology-title">Service Communication</h3>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-          gap: '1.5rem',
-          padding: '1.5rem',
-          background: '#0A192F',
-          borderRadius: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.05)',
-          minHeight: '140px',
-        }}
-      >
-        {topology.services.map((service, idx) => (
-          <React.Fragment key={service}>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '0.35rem',
-                background: 'rgba(15, 23, 42, 0.9)',
-                border: '1px solid #38bdf8',
-                boxShadow: '0 0 12px rgba(56, 189, 248, 0.15)',
-                borderRadius: '8px',
-                padding: '0.75rem 1.25rem',
-              }}
-            >
-              <span style={{ fontSize: '1.2rem' }}>🖥️</span>
-              <strong style={{ fontSize: '0.85rem', color: '#F5F7FA' }}>{service}</strong>
-              <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Active Node</span>
-            </div>
+      <ul className="trace-topology__services" aria-label="Services observed in trace">
+        {topology.services.map((service) => <li key={service}>{service}</li>)}
+      </ul>
 
-            {idx < topology.services.length - 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#D4AF37' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>calls</span>
-                <span style={{ fontSize: '1.4rem' }}>➔</span>
-              </div>
-            )}
-          </React.Fragment>
-        ))}
+      <div className="trace-topology__edges">
+        <h4>Validated cross-service parent/child edges</h4>
+        {topology.edges.length > 0 ? (
+          <ul>
+            {topology.edges.map((edge) => (
+              <li key={`${edge.from}-${edge.to}`}>
+                <code>{edge.from}</code> <span aria-hidden="true">→</span> <code>{edge.to}</code>
+                <span>{edge.count} observed {edge.count === 1 ? 'edge' : 'edges'}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No cross-service parent/child edge is present in the available spans.</p>
+        )}
       </div>
-    </div>
+      <p className="trace-topology__note">This view reports observed structural edges only; it does not infer calls or causation.</p>
+    </section>
   )
 }
 

@@ -252,7 +252,10 @@ function TraceExplorer() {
         />
       </div>
 
-      <section className="trace-explorer__workspace trace-workspace" aria-label="Trace investigation workspace">
+      <section
+        className={`trace-explorer__workspace trace-workspace ${selectedTrace ? 'trace-workspace--investigating' : ''}`}
+        aria-label="Trace investigation workspace"
+      >
         <TracePanel
           traces={result.items}
           isLoading={isLoading}
@@ -262,13 +265,14 @@ function TraceExplorer() {
           onClearFilters={clearFilters}
           selectedTrace={selectedTrace}
           sourceLabel="Bounded results from GET /api/v1/search/traces"
-          emptyTitle="No traces matched"
-          emptyMessage="Broaden the investigation criteria or wait for new telemetry."
+          emptyTitle="No telemetry yet"
+          emptyMessage="No persisted trace records are available. Results will appear when the backend receives telemetry."
           pagination={result}
           onPageChange={(page) => updateQuery({ page }, { resetPage: false })}
           onPageSizeChange={(size) => updateQuery({ size, page: 0 }, { resetPage: false })}
         />
         <TraceDetailsDrawer
+          key={selectedTrace ? getTraceKey(selectedTrace) : 'no-selection'}
           trace={selectedTrace}
           onClose={() => setSelectedTrace(null)}
           variant="panel"

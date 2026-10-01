@@ -25,8 +25,8 @@ function TracePanel({
     <section className="trace-panel" aria-label="Trace records">
       <div className="trace-panel__header">
         <div>
-          <p className="section-kicker">Request stream</p>
-          <h2>Recent Traces</h2>
+          <p className="section-kicker">Authoritative search</p>
+          <h2>Trace Results</h2>
         </div>
         <div className="trace-panel__meta">
           <span className="trace-panel__source">{sourceLabel}</span>

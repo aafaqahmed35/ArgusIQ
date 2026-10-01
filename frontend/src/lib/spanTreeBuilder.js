@@ -45,7 +45,7 @@ export function buildSpanTree(spans = [], traceSummary = {}) {
   const spanMap = new Map()
   const rootNodes = []
 
-  spans.forEach((span) => {
+  spans.forEach((span, index) => {
     const start = parseTime(span.startTime)
     const end = parseTime(span.endTime)
     const startOffsetMs = Math.max(0, start - minStartTime)
@@ -55,12 +55,12 @@ export function buildSpanTree(spans = [], traceSummary = {}) {
 
     const node = {
       ...span,
-      spanId: span.spanId || `span-${Math.random()}`,
+      spanId: span.spanId || `span-${index}`,
       parentSpanId: span.parentSpanId || null,
       name: span.name || 'unnamed-span',
-      serviceName: span.serviceName || traceSummary?.serviceName || 'AtlasBank',
-      kind: span.kind || 'INTERNAL',
-      statusCode: (span.statusCode || 'OK').toUpperCase(),
+      serviceName: span.serviceName || traceSummary?.serviceName || 'Unknown service',
+      kind: span.kind || 'UNKNOWN',
+      statusCode: (span.statusCode || 'UNKNOWN').toUpperCase(),
       statusMessage: span.statusMessage || '',
       startOffsetMs,
       durationMs: spanDurationMs,

@@ -9,6 +9,7 @@ export function computeCriticalPath(treeData, criticalPathResult) {
     criticalPathSpanIds: new Set(),
     criticalPathNodes: [],
     totalCriticalPathMs: 0,
+    traceWallClockMs: 0,
     criticalPathPercentage: 0,
     largestContributor: null,
   }
@@ -44,6 +45,7 @@ export function computeCriticalPath(treeData, criticalPathResult) {
     criticalPathSpanIds,
     criticalPathNodes,
     totalCriticalPathMs,
+    traceWallClockMs: wallClockMs,
     criticalPathPercentage,
     largestContributor,
   }
