@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/layout/PageHeader'
 import ServiceDetailPanel from '../components/services/ServiceDetailPanel'
 import ServiceListPanel from '../components/services/ServiceListPanel'
-import { fetchService, fetchServices } from '../services/traceApi'
+import { fetchService, fetchServices, fetchServiceRelationships } from '../services/traceApi'
 import '../styles/dashboard.css'
+import '../styles/evidence.css'
 
 const SORT_FIELD = {
   TRAFFIC: 'traffic',
@@ -21,6 +22,23 @@ function Services() {
   const [detailError, setDetailError] = useState(null)
   const serviceListRequestId = useRef(0)
   const serviceDetailRequestId = useRef(0)
+  const [relationships, setRelationships] = useState(null)
+  const [relationshipError, setRelationshipError] = useState(null)
+  const [relationshipLoading, setRelationshipLoading] = useState(true)
+  const relationshipRequestId = useRef(0)
+  const loadRelationships = useCallback(async () => {
+    const current = ++relationshipRequestId.current
+    setRelationshipLoading(true)
+    setRelationshipError(null)
+    try {
+      const data = await fetchServiceRelationships()
+      if (current === relationshipRequestId.current) setRelationships(data)
+    } catch (failure) {
+      if (current === relationshipRequestId.current) { setRelationships(null); setRelationshipError(failure) }
+    } finally {
+      if (current === relationshipRequestId.current) setRelationshipLoading(false)
+    }
+  }, [])
 
   const loadServices = useCallback(async () => {
     const requestId = ++serviceListRequestId.current
@@ -74,7 +92,13 @@ function Services() {
 
   useEffect(() => {
     queueMicrotask(loadServices)
-  }, [loadServices])
+    queueMicrotask(loadRelationships)
+    return () => {
+      serviceListRequestId.current += 1
+      serviceDetailRequestId.current += 1
+      relationshipRequestId.current += 1
+    }
+  }, [loadServices, loadRelationships])
 
   const sortedServices = useMemo(() => {
     const values = [...services]
@@ -96,11 +120,11 @@ function Services() {
   }, [loadServiceDetail])
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([loadServices(), loadServiceDetail(selectedServiceId)])
-  }, [loadServiceDetail, loadServices, selectedServiceId])
+    await Promise.all([loadServices(), loadServiceDetail(selectedServiceId), loadRelationships()])
+  }, [loadServiceDetail, loadServices, selectedServiceId, loadRelationships])
 
   return (
-    <div className="services-workspace">
+    <div className="services-workspace evidence-workspace">
       <section className="services-workspace__header" aria-label="Services header">
         <PageHeader
           title="Services"
@@ -112,7 +136,7 @@ function Services() {
         />
       </section>
 
-      <section className="services-workspace__body" aria-label="Observed services">
+      <section className="service-evidence-body" aria-label="Observed services">
         <ServiceListPanel
           services={sortedServices}
           isLoading={isLoading}
@@ -126,6 +150,9 @@ function Services() {
           service={selectedService}
           isLoading={isDetailLoading}
           error={detailError}
+          relationships={relationships}
+          relationshipError={relationshipError}
+          relationshipLoading={relationshipLoading}
         />
       </section>
     </div>

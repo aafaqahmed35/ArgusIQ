@@ -1,118 +1,16 @@
-import { useRef } from 'react'
-import { formatDuration } from '../../lib/traceAggregation'
+import { Link } from 'react-router-dom'
+import { buildTraceSearchHref, formatCount, formatDuration, formatPercent } from '../../pages/overviewData'
+import { observationLabel } from '../../pages/serviceEvidence'
+import { EvidencePanel, EvidenceState } from '../analytics/EvidencePrimitives'
 
-const SORT_FIELDS = [
-  { value: 'traffic', label: 'Requests' },
-  { value: 'latency', label: 'Latency' },
-]
-
-function formatPercent(value) {
-  return value === null || value === undefined ? '—' : `${value.toFixed(1)}%`
-}
-
-function ServiceListPanel({
-  services,
-  isLoading = false,
-  error = null,
-  selectedServiceId = null,
-  onServiceSelect,
-  sortField = 'traffic',
-  onSortFieldChange,
-}) {
-  const rowRefs = useRef([])
-
-  const handleRowKeyDown = (event, service, index) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      onServiceSelect?.(service)
-      return
-    }
-
-    const nextIndex = event.key === 'ArrowDown' ? index + 1 : event.key === 'ArrowUp' ? index - 1 : null
-    if (nextIndex !== null && services[nextIndex]) {
-      event.preventDefault()
-      onServiceSelect?.(services[nextIndex])
-      rowRefs.current[nextIndex]?.focus()
-    }
-  }
-
-  return (
-    <section className={`analytics-panel service-groups-panel ${isLoading ? 'analytics-panel--loading' : ''}`} aria-labelledby="services-title">
-      <div className="analytics-panel__header">
-        <div>
-          <p className="section-kicker">OpenTelemetry services</p>
-          <h2 id="services-title">Observed Services</h2>
-          <span className="analytics-panel__source-note">
-            {services.length.toLocaleString()} discovered service identities
-          </span>
-        </div>
-        <div className="analytics-panel__sort-group">
-          {SORT_FIELDS.map((field) => (
-            <button
-              className={`analytics-panel__sort ${sortField === field.value ? 'is-active' : ''}`}
-              type="button"
-              key={field.value}
-              onClick={() => onSortFieldChange?.(field.value)}
-            >
-              {field.label}{sortField === field.value ? ' ▼' : ''}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="table-state table-state--skeleton" role="status" aria-busy="true">
-          <span className="skeleton-line skeleton-line--wide" />
-          <span className="skeleton-line" />
-          <span className="skeleton-line skeleton-line--short" />
-        </div>
-      ) : error ? (
-        <div className="table-state table-state--error" role="alert">Unable to load service aggregates.</div>
-      ) : services.length === 0 ? (
-        <div className="analytics-empty">
-          <strong>No services observed</strong>
-          <span>Services appear after telemetry containing service.name is ingested.</span>
-        </div>
-      ) : (
-        <div className="table-shell service-groups-panel__table-shell">
-          <table className="trace-table service-groups-table">
-            <thead>
-              <tr>
-                <th scope="col">Service</th>
-                <th scope="col">Telemetry</th>
-                <th scope="col">Persisted requests</th>
-                <th scope="col">Last 1 min</th>
-                <th scope="col">Average</th>
-                <th scope="col">P95</th>
-                <th scope="col">Observed success</th>
-              </tr>
-            </thead>
-            <tbody>
-              {services.map((service, index) => (
-                <tr
-                  className={`trace-table__row trace-table__row--interactive ${selectedServiceId === service.id ? 'trace-table__row--selected' : ''}`}
-                  key={service.id}
-                  ref={(element) => { rowRefs.current[index] = element }}
-                  onClick={() => onServiceSelect?.(service)}
-                  onKeyDown={(event) => handleRowKeyDown(event, service, index)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <td className="cell-strong cell-path" title={service.serviceName}>{service.serviceName}</td>
-                  <td>{service.telemetryStatus}</td>
-                  <td>{service.requestCount.toLocaleString()}</td>
-                  <td>{service.requestsPerMinute.toLocaleString()}</td>
-                  <td>{formatDuration(service.averageLatencyMs)}</td>
-                  <td>{formatDuration(service.p95LatencyMs)}</td>
-                  <td>{formatPercent(service.successRate)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  )
+function ServiceListPanel({ services, isLoading, error, selectedServiceId, onServiceSelect, sortField, onSortFieldChange }) {
+  return <EvidencePanel title="Observed services" note="Request metrics count persisted SERVER spans, not unique traces. Status is observational, not service health.">
+    <div className="evidence-actions"><label>Order by <select value={sortField} onChange={(event) => onSortFieldChange(event.target.value)}><option value="traffic">Server requests</option><option value="latency">Average latency</option></select></label>{!isLoading && !error ? <span>{formatCount(services.length)} service identities</span> : null}</div>
+    <EvidenceState loading={isLoading} error={error} empty={!services.length ? 'No services observed. Service identities appear after telemetry is ingested.' : null}>
+      <div className="evidence-scroll" tabIndex={0} role="region" aria-label="Service inventory"><table className="evidence-table"><thead><tr><th scope="col">Service</th><th scope="col">Observation</th><th scope="col">Server requests</th><th scope="col">Errors / rate</th><th scope="col">Average / P95 / P99</th><th scope="col">Operations</th><th scope="col">Investigation</th></tr></thead><tbody>{services.map((service) => <tr key={service.id}><th scope="row" className="evidence-name"><button type="button" aria-pressed={selectedServiceId === service.id} onClick={() => onServiceSelect(service)} aria-label={`Inspect service ${service.serviceName}`}>{service.serviceName || 'Unknown service'}</button></th><td>{observationLabel(service.telemetryStatus)}</td><td>{formatCount(service.requestCount)}</td><td>{formatCount(service.errorCount)} / {formatPercent(service.errorRate)}</td><td>{formatDuration(service.averageLatencyMs)} / {formatDuration(service.p95LatencyMs)} / {formatDuration(service.p99LatencyMs)}</td><td>{formatCount(service.observedOperationCount)}</td><td>{service.serviceName ? <Link to={buildTraceSearchHref({ service: service.serviceName })} aria-label={`Investigate entry-service traces for ${service.serviceName}`}>Entry-service traces</Link> : '—'}</td></tr>)}</tbody></table></div>
+    </EvidenceState>
+    <p className="evidence-note">Recently observed means last seen within five minutes. Recent errors means at least 10% ERROR server spans in that window. Explorer service filters match trace entry identity, not every participating service.</p>
+  </EvidencePanel>
 }
 
 export default ServiceListPanel

@@ -1,88 +1,33 @@
 import { Link } from 'react-router-dom'
-import { parseBackendUtcTimestamp } from '../../lib/backendDateTime'
-import { formatDuration } from '../../lib/traceAggregation'
+import { buildTraceSearchHref, formatCount, formatDuration, formatPercent } from '../../pages/overviewData'
+import { observationLabel, observationTime } from '../../pages/serviceEvidence'
+import { EvidenceMetrics, EvidencePanel, EvidenceState, OperationEvidence } from '../analytics/EvidencePrimitives'
 
-function formatPercent(value) {
-  return value === null || value === undefined ? '—' : `${value.toFixed(1)}%`
+function RecentEvidence({ title, traces }) {
+  return <EvidencePanel title={title} note="Up to 10 returned traces · participating service evidence"><EvidenceState empty={!Array.isArray(traces) ? 'Recent evidence unavailable.' : !traces.length ? 'No matching traces in the returned evidence.' : null}><div className="evidence-scroll" tabIndex={0} role="region" aria-label={title}><table className="evidence-table"><thead><tr><th scope="col">Trace / root operation</th><th scope="col">Trace status</th><th scope="col">Duration</th><th scope="col">Start (UTC)</th><th scope="col">Investigation</th></tr></thead><tbody>{traces?.map((trace, index) => <tr key={trace.traceId || index}><td className="evidence-name"><strong>{trace.rootSpanName || 'Unknown operation'}</strong><code>{trace.traceId || 'Trace ID unavailable'}</code></td><td>{trace.statusCode || 'UNKNOWN'}</td><td>{formatDuration(trace.durationMs)}</td><td>{observationTime(trace.startTime)}</td><td>{trace.traceId ? <Link to={buildTraceSearchHref({ traceId: trace.traceId })} aria-label={`Inspect trace ${trace.traceId}`}>Inspect trace</Link> : '—'}</td></tr>)}</tbody></table></div></EvidenceState></EvidencePanel>
 }
 
-function formatTimestamp(value) {
-  if (!value) return '—'
-  const date = parseBackendUtcTimestamp(value)
-  return date ? `${new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' }).format(date)} UTC` : String(value)
-}
-
-function formatOperation(operation) {
-  if (!operation) return '—'
-  return `${operation.operationName} · ${formatDuration(operation.averageLatencyMs)} avg · ${operation.observationCount.toLocaleString()} spans`
-}
-
-function ServiceDetailPanel({ service, isLoading = false, error = null }) {
-  if (isLoading) {
-    return <section className="analytics-panel service-group-detail table-state table-state--skeleton" aria-busy="true">Loading service detail…</section>
-  }
-
-  if (error) {
-    return <section className="analytics-panel service-group-detail table-state table-state--error" role="alert">Unable to load service detail.</section>
-  }
-
-  if (!service) {
-    return (
-      <section className="analytics-panel service-group-detail" aria-labelledby="service-detail-title">
-        <div className="analytics-panel__header"><div><p className="section-kicker">Service identity</p><h2 id="service-detail-title">Service Detail</h2></div></div>
-        <div className="service-group-detail__empty table-state table-state--rich">
-          <strong>No service selected</strong>
-          <span>Select a discovered service to inspect its observed request and operation evidence.</span>
-        </div>
-      </section>
-    )
-  }
-
-  return (
-    <section className="analytics-panel service-group-detail" aria-labelledby="service-detail-title">
-      <div className="analytics-panel__header">
-        <div><p className="section-kicker">Service identity</p><h2 id="service-detail-title">{service.serviceName}</h2></div>
-        <Link className="panel-action service-group-detail__action" to={`/traces?service=${encodeURIComponent(service.serviceName)}`}>Investigate traces →</Link>
-      </div>
-
-      <dl className="analytics-endpoint-detail__grid">
-        <div className="analytics-endpoint-detail__item"><dt>Telemetry status</dt><dd>{service.telemetryStatus}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Persisted requests</dt><dd>{service.requestCount.toLocaleString()}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Requests in last minute</dt><dd>{service.requestsPerMinute.toLocaleString()}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Errors</dt><dd>{service.errorCount.toLocaleString()} · {formatPercent(service.errorRate)}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Observed success rate</dt><dd>{formatPercent(service.successRate)}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Average / P95 / P99</dt><dd>{formatDuration(service.averageLatencyMs)} / {formatDuration(service.p95LatencyMs)} / {formatDuration(service.p99LatencyMs)}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Observed operations</dt><dd>{service.observedOperationCount.toLocaleString()}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Reported cross-service child links</dt><dd>{service.dependencyCount.toLocaleString()}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>First observed</dt><dd>{formatTimestamp(service.firstSeen)}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Last observed</dt><dd>{formatTimestamp(service.lastSeen)}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Observation age</dt><dd>{service.observationAgeMinutes === null ? '—' : `${service.observationAgeMinutes.toLocaleString()} min`}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Runtime metadata</dt><dd>{[service.environment, service.version, service.language].filter(Boolean).join(' · ') || 'Not observed'}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Slowest operation</dt><dd>{formatOperation(service.slowestOperation)}</dd></div>
-        <div className="analytics-endpoint-detail__item"><dt>Fastest operation</dt><dd>{formatOperation(service.fastestOperation)}</dd></div>
-      </dl>
-
-      <div className="service-group-detail__endpoints">
-        <h3>Top operations by observed span count</h3>
-        {service.topOperationsByTraffic.length === 0 ? (
-          <p className="service-group-detail__endpoints-empty">No operation spans observed for this service.</p>
-        ) : (
-          <ol className="service-group-detail__endpoint-list">
-            {service.topOperationsByTraffic.map((operation) => (
-              <li className="service-group-detail__endpoint-item" key={operation.operationName}>
-                <span className="service-group-detail__endpoint-path">{operation.operationName}</span>
-                <span className="service-group-detail__endpoint-metrics">{operation.observationCount.toLocaleString()} spans · {formatDuration(operation.averageLatencyMs)} avg</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
-
-      <p className="analytics-endpoint-detail__caption">
-        Recent evidence: {service.recentTraces.length.toLocaleString()} traces · {service.recentErrors.length.toLocaleString()} error traces. Telemetry status is observational, not a liveness or availability claim.
-      </p>
-    </section>
-  )
+function ServiceDetailPanel({ service, isLoading, error, relationships, relationshipError, relationshipLoading }) {
+  const edges = relationships?.edges?.filter((edge) => edge.source === service?.serviceName || edge.target === service?.serviceName)
+  return <EvidenceState loading={isLoading} error={error} empty={!service ? 'Select a service to inspect operations and recent evidence.' : null}>
+    {service ? <div className="service-evidence-detail">
+      <EvidencePanel title={service.serviceName || 'Unknown service'} note="Service investigation · persisted SERVER-span aggregates">
+        {service.serviceName ? <div className="evidence-actions"><Link to={buildTraceSearchHref({ service: service.serviceName })}>Investigate entry-service traces</Link></div> : null}
+        <EvidenceMetrics items={[
+          ['Observation', observationLabel(service.telemetryStatus)], ['Server requests', formatCount(service.requestCount)], ['Last minute · UTC', formatCount(service.requestsPerMinute)],
+          ['Errors / rate', `${formatCount(service.errorCount)} / ${formatPercent(service.errorRate)}`], ['Average', formatDuration(service.averageLatencyMs)], ['P95 / P99', `${formatDuration(service.p95LatencyMs)} / ${formatDuration(service.p99LatencyMs)}`],
+          ['Min / max', `${formatDuration(service.minimumLatencyMs)} / ${formatDuration(service.maximumLatencyMs)}`], ['Operations', formatCount(service.observedOperationCount)], ['Outgoing structural links', formatCount(service.dependencyCount)],
+          ['First observed', observationTime(service.firstSeen)], ['Last observed', observationTime(service.lastSeen)],
+          ['Environment', service.environment || 'Not observed'], ['Version', service.version || 'Not observed'], ['Language', service.language || 'Not observed'],
+        ]} />
+      </EvidencePanel>
+      <EvidencePanel title="Operations by span count" note="Backend ordering · up to 10 operations · all span kinds, not only SERVER"><OperationEvidence operations={service.topOperationsByTraffic} /></EvidencePanel>
+      <div className="evidence-rankings"><EvidencePanel title="Slowest operation" note="Backend selection by average span duration"><OperationEvidence operations={service.slowestOperation === undefined ? undefined : service.slowestOperation ? [service.slowestOperation] : []} /></EvidencePanel><EvidencePanel title="Fastest operation" note="Backend selection by average span duration"><OperationEvidence operations={service.fastestOperation === undefined ? undefined : service.fastestOperation ? [service.fastestOperation] : []} /></EvidencePanel></div>
+      <EvidencePanel title="Observed service relationships" note="Persisted parent → child span links within the same trace. These links do not establish causation or synchronous calls."><EvidenceState loading={relationshipLoading} error={relationshipError} empty={!Array.isArray(edges) ? 'Relationship evidence unavailable.' : !edges.length ? 'No cross-service parent-child links returned for this service.' : null}><ul className="evidence-edges">{edges?.map((edge, index) => <li key={`${edge.source}-${edge.target}-${index}`}><span>Parent: <strong>{edge.source}</strong></span><span>Child: <strong>{edge.target}</strong></span></li>)}</ul></EvidenceState></EvidencePanel>
+      <RecentEvidence title="Recent traces" traces={service.recentTraces} /><RecentEvidence title="Recent error evidence" traces={service.recentErrors} />
+      <p className="evidence-note">Recent error evidence can include an ERROR span from this service even when the trace-level status is not ERROR. No errors in a returned sample is not a health or availability guarantee.</p>
+    </div> : null}
+  </EvidenceState>
 }
 
 export default ServiceDetailPanel

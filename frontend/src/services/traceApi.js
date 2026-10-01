@@ -66,6 +66,11 @@ export async function fetchServices() {
   return response.data
 }
 
+export async function fetchServiceRelationships() {
+  const response = await traceClient.get('/services/dependencies')
+  return response.data
+}
+
 export async function fetchService(serviceId) {
   const response = await traceClient.get(`/services/${encodeURIComponent(serviceId)}`)
   return response.data
