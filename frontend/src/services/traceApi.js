@@ -95,3 +95,13 @@ export async function resolveAlert(alertId) {
   const response = await traceClient.post(`/alerts/${encodeURIComponent(alertId)}/resolve`)
   return response.data
 }
+
+export async function fetchAlertRules() {
+  const response = await traceClient.get('/alerts/rules')
+  return response.data
+}
+
+export async function createAlertRule(rule) {
+  const response = await traceClient.post('/alerts/rules', rule)
+  return response.data
+}

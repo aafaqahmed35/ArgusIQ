@@ -1,73 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import AlertTimeline from '../components/alerts/AlertTimeline'
-import PageHeader from '../components/layout/PageHeader'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import AlertsEvidence from '../components/alerts/AlertsEvidence'
 import { useTraces } from '../hooks/useTraces'
-import { acknowledgeAlert, fetchAlerts, resolveAlert } from '../services/traceApi'
+import { acknowledgeAlert, createAlertRule, fetchAlertRules, fetchAlerts, resolveAlert } from '../services/traceApi'
+import { createAlertInvestigationStore } from './alertInvestigation'
 import '../styles/dashboard.css'
+import '../styles/evidence.css'
+import '../styles/alerts.css'
 
 function Alerts() {
   const { websocketStatus } = useTraces()
-  const [alerts, setAlerts] = useState([])
+  const [store] = useState(() => createAlertInvestigationStore({ acknowledgeAlert, createAlertRule, fetchAlertRules, fetchAlerts, resolveAlert }))
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [selectedAlertId, setSelectedAlertId] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const loadAlerts = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      setAlerts(await fetchAlerts())
-    } catch (requestError) {
-      setError(requestError)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    queueMicrotask(loadAlerts)
-  }, [loadAlerts])
-
-  const selectedAlert = useMemo(
-    () => alerts.find((alert) => alert.alertId === selectedAlertId) ?? null,
-    [alerts, selectedAlertId],
-  )
-
-  const runAction = useCallback(async (action, alertId) => {
-    setError(null)
-    try {
-      const updatedAlert = await action(alertId)
-      setAlerts((current) => current.map((alert) => (alert.alertId === alertId ? updatedAlert : alert)))
-    } catch (requestError) {
-      setError(requestError)
-    }
-  }, [])
-
-  return (
-    <div className="alerts-workspace">
-      <section className="alerts-workspace__header" aria-label="Alerts header">
-        <PageHeader
-          title="Alerts"
-          subtitle="Deterministic rule matches backed by persisted telemetry evidence."
-          websocketStatus={websocketStatus}
-          isLoading={isLoading}
-          onRefresh={loadAlerts}
-          statusNote={`${alerts.length.toLocaleString()} recent occurrences`}
-        />
-      </section>
-
-      <AlertTimeline
-        alerts={alerts}
-        error={error}
-        isLoading={isLoading}
-        onAcknowledge={(alertId) => runAction(acknowledgeAlert, alertId)}
-        onAlertDeselect={() => setSelectedAlertId(null)}
-        onAlertSelect={(alert) => setSelectedAlertId(alert.alertId)}
-        onResolve={(alertId) => runAction(resolveAlert, alertId)}
-        selectedAlert={selectedAlert}
-      />
-    </div>
-  )
+    queueMicrotask(store.refresh)
+    return store.dispose
+  }, [store])
+  return <AlertsEvidence state={state} websocketStatus={websocketStatus} selectedAlertId={selectedAlertId} onSelect={setSelectedAlertId} onRefresh={store.refresh} onAction={store.mutate} onCreateRule={store.createRule} />
 }
 
 export default Alerts
