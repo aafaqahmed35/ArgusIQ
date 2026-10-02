@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { createServer } from 'vite'
 import { WORKSPACES } from '../../config/workspaceConfig.js'
-import { getPrimaryWorkspaces, mobileNavigationReducer } from './appShellNavigation.js'
+import { focusMobileDestination, getPrimaryWorkspaces, mobileNavigationReducer } from './appShellNavigation.js'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 let vite
@@ -63,4 +63,24 @@ test('mobile navigation closes for every supported exit path', () => {
   assert.equal(mobileNavigationReducer(true, { type: 'route-selected' }), false)
   assert.equal(mobileNavigationReducer(true, { type: 'desktop-resize' }), false)
   assert.equal(mobileNavigationReducer(true, { type: 'backdrop' }), false)
+})
+
+test('mobile route selection reveals the destination heading without losing main-content focus', () => {
+  const viewport = {
+    scrollY: 1200,
+    scrollTo({ top }) { this.scrollY = top },
+  }
+  let focused = false
+  const mainContent = {
+    focus(options) {
+      focused = true
+      // Default focus scrolling aligns main under the sticky mobile header.
+      if (!options?.preventScroll) viewport.scrollY = 58
+    },
+  }
+
+  focusMobileDestination(mainContent, viewport)
+
+  assert.equal(viewport.scrollY, 0, 'the new route must start below the visible sticky header')
+  assert.equal(focused, true, 'keyboard focus must still move to the investigation content')
 })

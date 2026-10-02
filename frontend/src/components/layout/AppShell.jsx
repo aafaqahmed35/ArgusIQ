@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { WORKSPACES } from '../../config/workspaceConfig'
-import { getPrimaryWorkspaces, mobileNavigationReducer } from './appShellNavigation'
+import { focusMobileDestination, getPrimaryWorkspaces, mobileNavigationReducer } from './appShellNavigation'
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const PRIMARY_WORKSPACES = getPrimaryWorkspaces(WORKSPACES)
@@ -57,7 +57,7 @@ function AppShell() {
 
   const handleMobileNavigate = () => {
     dispatchNavigation({ type: 'route-selected' })
-    window.requestAnimationFrame(() => mainContentRef.current?.focus())
+    window.requestAnimationFrame(() => focusMobileDestination(mainContentRef.current))
   }
 
   const handleMobileNavigationKeyDown = (event) => {
