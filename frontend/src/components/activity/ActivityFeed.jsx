@@ -20,7 +20,7 @@ function ActivityFeed({
     <aside className={`activity-feed ${className}`.trim()} aria-labelledby="activity-feed-title">
       <div className="activity-feed__header">
         <div>
-          <p className="section-kicker">Live monitor</p>
+          <p className="section-kicker">Recent trace window</p>
           <h2 id="activity-feed-title">Recent Activity</h2>
         </div>
         <div className="activity-feed__header-actions">
@@ -34,7 +34,7 @@ function ActivityFeed({
       </div>
 
       {isLoading ? (
-        <div className="activity-feed__skeleton" aria-busy="true">
+        <div className="activity-feed__skeleton" role="status" aria-label="Loading recent activity" aria-busy="true">
           <span className="activity-feed__skeleton-row skeleton-line skeleton-line--wide" />
           <span className="activity-feed__skeleton-row skeleton-line" />
           <span className="activity-feed__skeleton-row skeleton-line skeleton-line--short" />
@@ -56,6 +56,7 @@ function ActivityFeed({
         </div>
       ) : (
         <>
+          {error ? <p className="evidence-note" role="alert">Recent trace refresh failed. Last received records remain below.</p> : null}
           <div className="activity-feed__columns" aria-hidden="true">
             <span>Time / status</span>
             <span>Service / operation</span>

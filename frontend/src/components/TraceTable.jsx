@@ -129,7 +129,7 @@ function TraceTable({
   }
 
   return (
-    <div className="table-shell">
+    <div className="table-shell" tabIndex={0} role="region" aria-label="Trace results table">
       <table className="trace-table">
         <thead>
           <tr>

@@ -13,7 +13,7 @@ function OverviewChart({ metrics, state, onRetry }) {
           <p className="section-kicker">Persisted latency</p>
           <h2 id="overview-latency-distribution-title">Duration Distribution</h2>
         </div>
-        <span className="panel-action">{observationCount.toLocaleString()} traces</span>
+        <span className="panel-action">{state === 'error' || state === 'loading' || !metrics?.traceDurationHistogram ? '—' : observationCount.toLocaleString()} traces</span>
       </div>
 
       <OverviewPanelState

@@ -10,7 +10,7 @@ function OverviewPanelState({
 }) {
   if (state === 'loading') {
     return (
-      <div className="overview-panel-state overview-panel-state--loading" aria-busy="true" aria-label={loadingLabel}>
+      <div className="overview-panel-state overview-panel-state--loading" role="status" aria-busy="true" aria-label={loadingLabel}>
         <span className="skeleton-line skeleton-line--wide" />
         <span className="skeleton-line" />
         <span className="skeleton-line skeleton-line--short" />

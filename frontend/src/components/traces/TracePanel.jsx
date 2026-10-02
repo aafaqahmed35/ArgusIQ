@@ -22,7 +22,7 @@ function TracePanel({
   const highlightedKeySet = new Set(highlightedTraceKeys)
 
   return (
-    <section className="trace-panel" aria-label="Trace records">
+    <section className={`trace-panel ${isLoading || error || !traces.length ? 'trace-panel--state' : ''}`} aria-label="Trace records">
       <div className="trace-panel__header">
         <div>
           <p className="section-kicker">Authoritative search</p>
@@ -31,7 +31,7 @@ function TracePanel({
         <div className="trace-panel__meta">
           <span className="trace-panel__source">{sourceLabel}</span>
           <span className="trace-panel__count">
-            {pagination ? `${pagination.totalItems.toLocaleString()} matches` : `${traces.length.toLocaleString()} records`}
+            {isLoading || error ? '— matches' : pagination ? `${pagination.totalItems.toLocaleString()} matches` : `${traces.length.toLocaleString()} records`}
           </span>
         </div>
       </div>

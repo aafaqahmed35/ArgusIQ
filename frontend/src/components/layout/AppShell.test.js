@@ -42,10 +42,13 @@ test('the application shell exposes truthful primary navigation and active-route
   assert.match(markup, /aria-current="page"[^>]*href="\/traces"/)
   assert.match(markup, /ArgusIQ workspace/)
   assert.doesNotMatch(markup, /Admin User|admin@argusiq\.io/)
-  assert.doesNotMatch(markup, />Infrastructure<|>Settings</)
+  assert.match(markup, /aria-label="Product information"/)
+  assert.match(markup, /href="\/infrastructure"/)
+  assert.match(markup, /href="\/settings"/)
+  assert.doesNotMatch(markup, /not yet available|>AI</)
 })
 
-test('unfinished workspaces are omitted only from primary navigation', () => {
+test('product information routes stay separate from frequent investigation navigation', () => {
   const primaryWorkspaces = getPrimaryWorkspaces(WORKSPACES)
 
   assert.deepEqual(primaryWorkspaces.map(({ id }) => id), ['overview', 'traces', 'analytics', 'services', 'alerts'])

@@ -34,22 +34,12 @@ export const WORKSPACES = [
     path: '/infrastructure',
     label: 'Infrastructure',
     primaryNavigation: false,
-    title: 'Infrastructure',
-    eyebrow: 'Pipeline health',
-    subtitle: 'Verify REST, WebSocket, and backend connectivity for trustworthy telemetry.',
-    problem: 'Are my observability pipelines working?',
-    scheduledPhase: 'PR-7',
   },
   {
     id: 'settings',
     path: '/settings',
     label: 'Settings',
     primaryNavigation: false,
-    title: 'Settings',
-    eyebrow: 'Configuration',
-    subtitle: 'Manage connection settings and workspace preferences.',
-    problem: 'How is ArgusIQ configured for my environment?',
-    scheduledPhase: 'PR-8',
   },
 ]
 

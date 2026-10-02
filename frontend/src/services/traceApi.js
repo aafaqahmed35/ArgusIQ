@@ -1,6 +1,5 @@
 import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_ARGUSIQ_API_BASE_URL ?? 'http://localhost:8080/api/v1'
+import { API_BASE_URL } from '../config/runtimeConfig'
 
 const traceClient = axios.create({
   baseURL: API_BASE_URL,

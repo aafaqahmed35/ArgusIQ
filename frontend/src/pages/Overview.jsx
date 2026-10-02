@@ -65,11 +65,11 @@ function Overview() {
       <section className="overview-workspace__header" aria-label="Overview header">
         <PageHeader
           title="Overview"
-          subtitle="Persisted telemetry health, latency, traffic, and the latest investigation signals."
+          subtitle="Persisted latency, traffic, and recent investigation signals."
           websocketStatus={websocketStatus}
           isLoading={isOverviewRefreshing}
           onRefresh={handleRefresh}
-          statusNote={`${recentTraces.length.toLocaleString()} / ${recentTraceLimit.toLocaleString()} recent`}
+          statusNote={isLoading ? 'Loading recent traces' : error ? 'Recent traces unavailable' : `${recentTraces.length.toLocaleString()} / ${recentTraceLimit.toLocaleString()} recent`}
         />
       </section>
 

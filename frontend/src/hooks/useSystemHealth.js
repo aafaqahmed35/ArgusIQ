@@ -81,7 +81,7 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
       (averageResponseTime !== null && averageResponseTime >= 750) || (p95ResponseTime !== null && p95ResponseTime >= 1500)
     const backendUnavailable = Boolean(error)
     const websocketDisconnected = websocketStatus !== WEBSOCKET_LIVE && websocketStatus !== WEBSOCKET_CONNECTING
-    const noRecentTraces = !isLoading && recentTraceCount === 0
+    const noRecentTraces = !isLoading && !error && recentTraceCount === 0
 
     const anomalies = [
       ...(backendUnavailable ? ['Backend unavailable'] : []),
@@ -95,7 +95,7 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
       ...(unsetCount > 0 ? [`${unsetCount.toLocaleString()} traces reported UNSET status`] : []),
     ]
 
-    const status = observedTelemetryStatus({
+    const status = backendUnavailable ? 'Recent traces unavailable' : observedTelemetryStatus({
       isLoading,
       observationCount: recentTraceCount,
       errorCount,
@@ -109,7 +109,7 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
 
     return {
       status,
-      tone: getToneForStatus(status),
+      tone: backendUnavailable ? 'error' : getToneForStatus(status),
       summary: 'Evidence is limited to the bounded recent trace window; it is not an availability or uptime claim.',
       snapshot: [
         { label: 'ArgusIQ API', value: backendState, tone: backendUnavailable ? 'error' : isLoading ? 'warning' : 'success' },
@@ -119,8 +119,8 @@ export function useSystemHealth({ recentTraces, analytics, websocketStatus, isLo
           value: websocketState,
           tone: websocketStatus === WEBSOCKET_LIVE ? 'success' : websocketStatus === WEBSOCKET_CONNECTING ? 'warning' : 'error',
         },
-        { label: 'Latest Trace', value: latestTraceLabel, tone: latestTraceTime ? 'success' : 'neutral' },
-        { label: 'Recent Traces', value: recentTraceCount.toLocaleString(), tone: recentTraceCount > 0 ? 'success' : 'neutral' },
+        { label: 'Latest Trace', value: backendUnavailable ? 'Unavailable' : latestTraceLabel, tone: latestTraceTime ? 'success' : 'neutral' },
+        { label: 'Recent Traces', value: backendUnavailable ? '—' : recentTraceCount.toLocaleString(), tone: recentTraceCount > 0 ? 'success' : 'neutral' },
       ],
       signals: [
         { label: 'REST', value: restState, detail: backendUnavailable ? 'Trace fetch failed' : 'Trace endpoint state', tone: backendUnavailable ? 'error' : isLoading ? 'warning' : 'success' },

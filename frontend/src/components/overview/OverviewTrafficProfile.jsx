@@ -73,7 +73,7 @@ function OverviewTrafficProfile({ metrics, state, onRetry }) {
         onRetry={onRetry}
       >
         <div className="overview-traffic-profile__body">
-          <DistributionGroup title="HTTP status" items={statusItems} getTone={getStatusTone} />
+          <DistributionGroup title="Trace status" items={statusItems} getTone={getStatusTone} />
           <DistributionGroup title="HTTP method" items={methodItems} />
         </div>
       </OverviewPanelState>

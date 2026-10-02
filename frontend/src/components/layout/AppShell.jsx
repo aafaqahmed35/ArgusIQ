@@ -5,6 +5,7 @@ import { getPrimaryWorkspaces, mobileNavigationReducer } from './appShellNavigat
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const PRIMARY_WORKSPACES = getPrimaryWorkspaces(WORKSPACES)
+const UTILITY_WORKSPACES = WORKSPACES.filter((workspace) => workspace.primaryNavigation === false)
 
 function Brand({ compact = false }) {
   return (
@@ -31,6 +32,12 @@ function NavigationLinks({ onNavigate }) {
       <span>{workspace.label}</span>
     </NavLink>
   ))
+}
+
+function UtilityLinks({ onNavigate }) {
+  return <nav aria-label="Product information" className="app-sidebar__utilities">
+    {UTILITY_WORKSPACES.map((workspace) => <NavLink key={workspace.id} to={workspace.path} onClick={onNavigate} className={({ isActive }) => `app-sidebar__link ${isActive ? 'is-active' : ''}`}>{workspace.label}</NavLink>)}
+  </nav>
 }
 
 function AppShell() {
@@ -110,16 +117,19 @@ function AppShell() {
           <NavigationLinks />
         </nav>
 
-        <div className="app-sidebar__workspace">
-          <span className="app-sidebar__workspace-mark" aria-hidden="true">AI</span>
-          <div>
-            <strong>ArgusIQ workspace</strong>
-            <span>Observability console</span>
+        <div>
+          <UtilityLinks />
+          <div className="app-sidebar__workspace">
+            <span className="app-sidebar__workspace-mark" aria-hidden="true">AQ</span>
+            <div>
+              <strong>ArgusIQ workspace</strong>
+              <span>Observability console</span>
+            </div>
           </div>
         </div>
       </aside>
 
-      <header className="app-mobile-bar">
+      <header className="app-mobile-bar" inert={isMobileNavigationOpen ? true : undefined}>
         <Brand compact />
         <button
           aria-controls="mobile-primary-navigation"
@@ -172,12 +182,12 @@ function AppShell() {
             <nav aria-label="Primary navigation" className="app-sidebar__nav app-mobile-navigation__nav">
               <NavigationLinks onNavigate={handleMobileNavigate} />
             </nav>
-            <p className="app-mobile-navigation__note">Infrastructure and Settings are not yet available in this production workspace.</p>
+            <UtilityLinks onNavigate={handleMobileNavigate} />
           </aside>
         </div>
       ) : null}
 
-      <main className="dashboard-page" id="main-content" ref={mainContentRef} tabIndex={-1}>
+      <main className="dashboard-page" id="main-content" ref={mainContentRef} tabIndex={-1} inert={isMobileNavigationOpen ? true : undefined}>
         <Outlet />
       </main>
     </div>
